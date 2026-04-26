@@ -1,0 +1,3 @@
+Apr 26 16:10:01 server kernel: OUTBOUND connection src=10.0.0.12 dst=185.199.110.153 proto=TCP spt=44321 dpt=443 bytes=5242880
+Apr 26 16:10:05 server kernel: OUTBOUND connection src=10.0.0.12 dst=185.199.110.153 proto=TCP spt=44322 dpt=443 bytes=7340032
+Apr 26 16:10:09 server kernel: OUTBOUND connection src=10.0.0.12 dst=185.199.110.153 proto=TCP spt=44323 dpt=443 bytes=10485760

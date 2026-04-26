@@ -1,0 +1,3 @@
+Apr 26 14:55:02 server sudo: unknown : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/unknown ; USER=root ; COMMAND=/bin/bash
+Apr 26 14:55:10 server sudo: unknown : TTY=pts/0 ; PWD=/home/unknown ; USER=root ; COMMAND=/usr/bin/python3 exploit.py
+Apr 26 14:55:15 server kernel: audit: UID=1002 attempting privilege escalation

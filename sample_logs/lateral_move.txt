@@ -1,0 +1,4 @@
+Apr 26 15:02:11 server1 sshd[22341]: Accepted password for jdoe from 10.0.0.5 port 51234 ssh2
+Apr 26 15:02:45 server1 sudo: jdoe : TTY=pts/1 ; PWD=/home/jdoe ; USER=root ; COMMAND=/bin/bash
+Apr 26 15:03:10 server2 sshd[22411]: Accepted password for jdoe from 10.0.0.5 port 51235 ssh2
+Apr 26 15:03:45 server2 sudo: jdoe : TTY=pts/2 ; PWD=/home/jdoe ; USER=root ; COMMAND=/bin/bash
