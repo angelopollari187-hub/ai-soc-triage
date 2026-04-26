@@ -2,7 +2,14 @@
 
 Automates security log analysis using AI to detect threats, map to MITRE ATT&CK, and generate incident response actions.
 
-## Demo Results
+## Features
+- AI-assisted log triage
+- MITRE ATT&CK mapping
+- Risk scoring and confidence levels
+- Batch processing for multiple log scenarios
+- Automated incident response recommendations
+
+## Detection Capabilities
 
 | Scenario | Risk | MITRE ATT&CK Mapping |
 |----------|------|----------------------|
