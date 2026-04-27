@@ -2,7 +2,7 @@
 
 Automates security log analysis using AI to detect threats, map to MITRE ATT&CK, and generate incident response actions.
 
-## Demo
+## SOC Triage Demo
 ![SOC Triage Demo](demo.png)
 
 ## Features
