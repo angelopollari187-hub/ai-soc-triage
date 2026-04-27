@@ -22,8 +22,27 @@ Automates security log analysis using AI to detect threats, map to MITRE ATT&CK,
 | Malware execution | CRITICAL | T1059.004 - Unix Shell |
 | Privilege escalation | CRITICAL | T1548.003 - Sudo and Sudo Caching |
 
-## Example Output
+## 🚀 How to Run
 
+### 1. Clone the Repository
+```bash
+git clone https://github.com/angelopollari187-hub/ai-soc-triage.git
+cd ai-soc-triage
+```
+### 2. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+### 3. Run a Single Log
+```bash
+python triage.py --log sample_logs/failed_auth.txt
+```
+### 4. Run Batch Processing
+```bash
+python triage.py --batch sample_logs/
+```
+
+## 🧪 Example Output
 ```bash
 AI-SOC TRIAGE REPORT
 File: sample_logs/malware_exec.txt
@@ -41,3 +60,4 @@ FALSE POSITIVE LIKELIHOOD: 3%
 
 RECOMMENDED ACTION:
 Immediately isolate the affected server, terminate processes spawned by the payload, remove the suspicious service and payload file, review persistence mechanisms, and block the source IP.
+```
