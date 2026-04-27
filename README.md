@@ -11,6 +11,16 @@ Automates security log analysis using AI to detect threats, map to MITRE ATT&CK,
 - Risk scoring and confidence levels
 - Batch processing for multiple log scenarios
 - Automated incident response recommendations
+- 
+## 💡 Why This Matters
+
+This project simulates a real SOC workflow by:
+- Reducing alert fatigue through automated triage
+- Mapping raw logs to MITRE ATT&CK techniques
+- Prioritizing threats based on severity and confidence
+- Generating actionable response steps for analysts
+
+This reflects how modern SOC teams investigate and respond to security incidents.
 
 ## Detection Capabilities
 
