@@ -110,6 +110,11 @@ def main():
             failed += 1
             continue
 
+        now = datetime.now()
+        timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+        file_timestamp = now.strftime("%Y%m%d_%H%M%S")
+        incident_id = f"INC-{now.strftime('%Y%m%d-%H%M%S')}"
+
         report = format_report(parsed, log_file)
 
         public_ip = extract_public_ip(log_data)
@@ -125,6 +130,9 @@ def main():
 
         if risk in ["HIGH", "CRITICAL"]:
             alert_payload = {
+                "incident_id": incident_id,
+                "timestamp": timestamp,
+                "status": "OPEN",
                 "risk_level": risk,
                 "mitre_technique": parsed.get("attack_technique"),
                 "source_file": log_file,
@@ -161,8 +169,10 @@ def main():
             json_file = f"output/{base_name}_alert_{timestamp}.json"
 
             alert = {
+                "incident_id": incident_id,
                 "source_file": log_file,
                 "timestamp": timestamp,
+                "status": "OPEN",
                 "risk_level": parsed.get("risk_level"),
                 "mitre_technique": parsed.get("attack_technique"),
                 "confidence": parsed.get("confidence"),

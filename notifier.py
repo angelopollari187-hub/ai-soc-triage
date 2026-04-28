@@ -30,6 +30,9 @@ def send_slack_alert(alert: dict) -> bool:
         logger.warning(message)
         return False
 
+    incident_id = alert.get("incident_id", "N/A")
+    timestamp = alert.get("timestamp", "N/A")
+    status = alert.get("status", "OPEN")
     risk_level = alert.get("risk_level", "UNKNOWN")
     mitre = alert.get("mitre_technique", "N/A")
     source_file = alert.get("source_file", "N/A")
@@ -54,6 +57,15 @@ def send_slack_alert(alert: dict) -> bool:
             {
                 "type": "section",
                 "fields": [
+                    {"type": "mrkdwn", "text": f"*Incident ID:*\n`{incident_id}`"},
+                    {"type": "mrkdwn", "text": f"*Status:*\n{status}"},
+                    {"type": "mrkdwn", "text": f"*Timestamp:*\n{timestamp}"},
+                    {"type": "mrkdwn", "text": f"*Source File:*\n`{source_file}`"},
+                ],
+            },
+            {
+                "type": "section",
+                "fields": [
                     {"type": "mrkdwn", "text": f"*Risk Level:*\n{risk_level}"},
                     {"type": "mrkdwn", "text": f"*Confidence:*\n{confidence}"},
                     {"type": "mrkdwn", "text": f"*MITRE Technique:*\n{mitre}"},
@@ -62,16 +74,12 @@ def send_slack_alert(alert: dict) -> bool:
             },
             {
                 "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Source File:*\n`{source_file}`",
-                },
-            },
-            {
-                "type": "section",
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Enriched IP:*\n{enrichment.get('ip', 'N/A')}"},
-                    {"type": "mrkdwn", "text": f"*Location:*\n{enrichment.get('city', 'N/A')}, {enrichment.get('country', 'N/A')}"},
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Location:*\n{enrichment.get('city', 'N/A')}, {enrichment.get('country', 'N/A')}",
+                    },
                     {"type": "mrkdwn", "text": f"*ASN / Org:*\n{enrichment.get('asn', 'N/A')}"},
                     {
                         "type": "mrkdwn",
