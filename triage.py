@@ -3,14 +3,15 @@ import argparse
 import json
 from datetime import datetime
 
+from tenacity import retry, stop_after_attempt, wait_exponential
 from dotenv import load_dotenv
 import anthropic
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from logger_config import get_logger
 from prompt_template import SYSTEM_PROMPT, build_user_prompt
+from enrichment import extract_public_ip, enrich_ip
 from formatter import format_report
-
+from notifier import send_slack_alert
 
 logger = get_logger("triage")
 
@@ -21,6 +22,7 @@ def main():
     parser.add_argument("--log", help="Path to single log file")
     parser.add_argument("--batch", help="Directory of log files")
     parser.add_argument("--save", action="store_true", help="Save output to file")
+    parser.add_argument("--json", action="store_true", help="Save structured JSON alert output")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
 
     args = parser.parse_args()
@@ -39,47 +41,38 @@ def main():
     if args.log:
         log_files.append(args.log)
     elif args.batch:
-        if not os.path.isdir(args.batch):
-            logger.error(f"Batch directory not found: {args.batch}")
-            raise ValueError(f"Batch directory not found: {args.batch}")
-
         for file in os.listdir(args.batch):
             if file.endswith(".txt"):
                 log_files.append(os.path.join(args.batch, file))
     else:
-        logger.error("No input provided. User must provide --log or --batch.")
+        logger.error("No input provided. Must provide --log or --batch.")
         raise ValueError("Provide --log or --batch")
 
-    if not log_files:
-        logger.warning("No .txt log files found to process.")
-        print("[-] No .txt log files found to process.")
-        return
-
-    total_logs = 0
-    successful = 0
+    total = 0
+    success = 0
     failed = 0
 
     for log_file in log_files:
-        total_logs += 1
+        total += 1
         start_time = datetime.now()
 
         logger.info(f"Starting analysis for {log_file}")
 
         if not os.path.isfile(log_file):
+            logger.warning(f"File not found: {log_file}")
             failed += 1
-            logger.warning(f"Log file not found, skipping: {log_file}")
             continue
 
         with open(log_file, "r", encoding="utf-8", errors="replace") as f:
             log_data = f.read().strip()
 
         if not log_data:
+            logger.warning(f"Empty log file: {log_file}")
             failed += 1
-            logger.warning(f"Log file is empty, skipping: {log_file}")
             continue
 
         if len(log_data) > 50000:
-            logger.warning(f"Log file exceeds 50,000 characters, truncating: {log_file}")
+            logger.warning(f"Truncating large log file: {log_file}")
             log_data = log_data[:50000]
 
         user_prompt = build_user_prompt(log_data)
@@ -101,10 +94,9 @@ def main():
         try:
             response = call_ai()
         except Exception as e:
-            failed += 1
             logger.error(f"API call failed for {log_file}: {e}")
-            if not args.quiet:
-                print(f"[-] API failed for {log_file}, skipping...")
+            print(f"[-] API failed for {log_file}")
+            failed += 1
             continue
 
         raw_output = response.content[0].text
@@ -112,23 +104,40 @@ def main():
         try:
             parsed = json.loads(raw_output)
         except json.JSONDecodeError:
-            failed += 1
             logger.error(f"Failed to parse AI response for {log_file}")
             if not args.quiet:
-                print(f"[-] Failed to parse AI response for {log_file}:")
                 print(raw_output)
+            failed += 1
             continue
 
         report = format_report(parsed, log_file)
-        successful += 1
 
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
+        public_ip = extract_public_ip(log_data)
+        enrichment = enrich_ip(public_ip)
 
         logger.info(f"Completed analysis for {log_file}")
         logger.info(f"Risk level: {parsed.get('risk_level')}")
         logger.info(f"MITRE technique: {parsed.get('attack_technique')}")
-        logger.info(f"Processing time: {duration:.2f}s")
+        logger.info(f"Enriched IP: {enrichment.get('ip')}")
+        logger.info(f"Enrichment status: {enrichment.get('enrichment_status')}")
+
+        risk = parsed.get("risk_level", "").upper()
+
+        if risk in ["HIGH", "CRITICAL"]:
+            alert_payload = {
+                "risk_level": risk,
+                "mitre_technique": parsed.get("attack_technique"),
+                "source_file": log_file,
+                "confidence": parsed.get("confidence"),
+                "false_positive_likelihood": parsed.get("false_positive_likelihood"),
+                "recommended_action": parsed.get("recommended_action"),
+                "enrichment": enrichment,
+            }
+
+            send_slack_alert(alert_payload)
+
+        elapsed = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Processing time: {elapsed:.2f}s")
 
         if not args.quiet:
             print(report)
@@ -138,8 +147,6 @@ def main():
             base_name = os.path.basename(log_file).replace(".txt", "")
             output_file = f"output/{base_name}_report_{timestamp}.txt"
 
-            os.makedirs("output", exist_ok=True)
-
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(report)
 
@@ -148,13 +155,39 @@ def main():
             if not args.quiet:
                 print(f"[+] Saved: {output_file}")
 
+        if args.json:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = os.path.basename(log_file).replace(".txt", "")
+            json_file = f"output/{base_name}_alert_{timestamp}.json"
+
+            alert = {
+                "source_file": log_file,
+                "timestamp": timestamp,
+                "risk_level": parsed.get("risk_level"),
+                "mitre_technique": parsed.get("attack_technique"),
+                "confidence": parsed.get("confidence"),
+                "false_positive_likelihood": parsed.get("false_positive_likelihood"),
+                "recommended_action": parsed.get("recommended_action"),
+                "enrichment": enrichment,
+            }
+
+            with open(json_file, "w", encoding="utf-8") as f:
+                json.dump(alert, f, indent=4)
+
+            logger.info(f"JSON alert saved to {json_file}")
+
+            if not args.quiet:
+                print(f"[+] JSON Saved: {json_file}")
+
+        success += 1
+
     logger.info("=== SOC TRIAGE SUMMARY ===")
-    logger.info(f"Total logs processed: {total_logs}")
-    logger.info(f"Successful analyses: {successful}")
+    logger.info(f"Total logs processed: {total}")
+    logger.info(f"Successful analyses: {success}")
     logger.info(f"Failed analyses: {failed}")
 
-    if total_logs > 0:
-        success_rate = (successful / total_logs) * 100
+    if total > 0:
+        success_rate = (success / total) * 100
         logger.info(f"Success rate: {success_rate:.2f}%")
 
 
