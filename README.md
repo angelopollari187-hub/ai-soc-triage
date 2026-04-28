@@ -2,8 +2,13 @@
 
 Automates security log analysis using AI to detect threats, map activity to MITRE ATT&CK, enrich alerts with IP intelligence, and generate SOC-style incident response actions.
 
-## SOC Triage Demo
-![SOC Triage Demo](demo.png)
+## 🔎 SOC Triage Demo
+
+### 🖥️ Terminal Analysis Output
+![Triage Demo](demo.png)
+
+### 🚨 Slack Alret Output
+![Slack Alert](slack_alert.png)
 
 ## Features
 - AI-assisted log triage
