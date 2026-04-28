@@ -5,10 +5,10 @@ Automates security log analysis using AI to detect threats, map activity to MITR
 ## 🔎 SOC Triage Demo
 
 ### 🖥️ Terminal Analysis Output
-![Triage Demo](images/terminal_demo)
+![Triage Demo](images/terminal_demo.png)
 
 ### 🚨 Slack Alret Output
-![Slack Alert](images/slack_alert)
+![Slack Alert](images/slack_alert.png)
 
 ## Features
 - AI-assisted log triage
