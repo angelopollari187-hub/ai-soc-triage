@@ -6,8 +6,12 @@ from datetime import datetime
 from dotenv import load_dotenv
 import anthropic
 
+from logger_config import get_logger
 from prompt_template import SYSTEM_PROMPT, build_user_prompt
 from formatter import format_report
+
+
+logger = get_logger("triage")
 
 
 def main():
@@ -15,22 +19,20 @@ def main():
 
     parser.add_argument("--log", help="Path to single log file")
     parser.add_argument("--batch", help="Directory of log files")
-
     parser.add_argument("--save", action="store_true", help="Save output to file")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
 
     args = parser.parse_args()
 
-    # Load API key
     load_dotenv()
     api_key = os.getenv("ANTHROPIC_API_KEY")
 
     if not api_key:
+        logger.error("API key not found. Check your .env file.")
         raise ValueError("API key not found. Check your .env file.")
 
     client = anthropic.Anthropic(api_key=api_key)
 
-    # Build list of log files
     log_files = []
 
     if args.log:
@@ -40,11 +42,13 @@ def main():
             if file.endswith(".txt"):
                 log_files.append(os.path.join(args.batch, file))
     else:
+        logger.error("No input provided. User must provide --log or --batch.")
         raise ValueError("Provide --log or --batch")
 
-    # Process each log file
     for log_file in log_files:
-        with open(log_file, "r") as f:
+        logger.info(f"Starting analysis for {log_file}")
+
+        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
             log_data = f.read()
 
         user_prompt = build_user_prompt(log_data)
@@ -66,11 +70,17 @@ def main():
         try:
             parsed = json.loads(raw_output)
         except json.JSONDecodeError:
-            print(f"[-] Failed to parse AI response for {log_file}:")
-            print(raw_output)
+            logger.error(f"Failed to parse AI response for {log_file}")
+            if not args.quiet:
+                print(f"[-] Failed to parse AI response for {log_file}:")
+                print(raw_output)
             continue
 
         report = format_report(parsed, log_file)
+
+        logger.info(f"Completed analysis for {log_file}")
+        logger.info(f"Risk level: {parsed.get('risk_level')}")
+        logger.info(f"MITRE technique: {parsed.get('attack_technique')}")
 
         if not args.quiet:
             print(report)
@@ -80,10 +90,16 @@ def main():
             base_name = os.path.basename(log_file).replace(".txt", "")
             output_file = f"output/{base_name}_report_{timestamp}.txt"
 
-            with open(output_file, "w") as f:
+            with open(output_file, "w", encoding="utf-8") as f:
                 f.write(report)
 
-            print(f"[+] Saved: {output_file}")
+            logger.info(f"Report saved to {output_file}")
+
+            if not args.quiet:
+                print(f"[+] Saved: {output_file}")
+            else:
+                print(f"[+] Saved: {output_file}")
+
 
 if __name__ == "__main__":
     main()
