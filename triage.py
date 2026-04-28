@@ -12,6 +12,7 @@ from prompt_template import SYSTEM_PROMPT, build_user_prompt
 from enrichment import extract_public_ip, enrich_ip
 from formatter import format_report
 from notifier import send_slack_alert
+from csv_exporter import append_alert_to_csv
 
 logger = get_logger("triage")
 
@@ -111,8 +112,14 @@ def main():
             continue
 
         now = datetime.now()
+
+        # Analyst-friendly timestamp for Slack, JSON content, and CSV rows
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        # File-safe timestamp for report/JSON filenames
         file_timestamp = now.strftime("%Y%m%d_%H%M%S")
+
+        # SOC-style incident ID
         incident_id = f"INC-{now.strftime('%Y%m%d-%H%M%S')}"
 
         report = format_report(parsed, log_file)
@@ -128,21 +135,23 @@ def main():
 
         risk = parsed.get("risk_level", "").upper()
 
-        if risk in ["HIGH", "CRITICAL"]:
-            alert_payload = {
-                "incident_id": incident_id,
-                "timestamp": timestamp,
-                "status": "OPEN",
-                "risk_level": risk,
-                "mitre_technique": parsed.get("attack_technique"),
-                "source_file": log_file,
-                "confidence": parsed.get("confidence"),
-                "false_positive_likelihood": parsed.get("false_positive_likelihood"),
-                "recommended_action": parsed.get("recommended_action"),
-                "enrichment": enrichment,
-            }
+        alert = {
+            "incident_id": incident_id,
+            "source_file": log_file,
+            "timestamp": timestamp,
+            "status": "OPEN",
+            "risk_level": parsed.get("risk_level"),
+            "mitre_technique": parsed.get("attack_technique"),
+            "confidence": parsed.get("confidence"),
+            "false_positive_likelihood": parsed.get("false_positive_likelihood"),
+            "recommended_action": parsed.get("recommended_action"),
+            "enrichment": enrichment,
+        }
 
-            send_slack_alert(alert_payload)
+        if risk in ["HIGH", "CRITICAL"]:
+            slack_alert = alert.copy()
+            slack_alert["risk_level"] = risk
+            send_slack_alert(slack_alert)
 
         elapsed = (datetime.now() - start_time).total_seconds()
         logger.info(f"Processing time: {elapsed:.2f}s")
@@ -151,9 +160,8 @@ def main():
             print(report)
 
         if args.save:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             base_name = os.path.basename(log_file).replace(".txt", "")
-            output_file = f"output/{base_name}_report_{timestamp}.txt"
+            output_file = f"output/{base_name}_report_{file_timestamp}.txt"
 
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(report)
@@ -164,22 +172,10 @@ def main():
                 print(f"[+] Saved: {output_file}")
 
         if args.json:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             base_name = os.path.basename(log_file).replace(".txt", "")
-            json_file = f"output/{base_name}_alert_{timestamp}.json"
+            json_file = f"output/{base_name}_alert_{file_timestamp}.json"
 
-            alert = {
-                "incident_id": incident_id,
-                "source_file": log_file,
-                "timestamp": timestamp,
-                "status": "OPEN",
-                "risk_level": parsed.get("risk_level"),
-                "mitre_technique": parsed.get("attack_technique"),
-                "confidence": parsed.get("confidence"),
-                "false_positive_likelihood": parsed.get("false_positive_likelihood"),
-                "recommended_action": parsed.get("recommended_action"),
-                "enrichment": enrichment,
-            }
+            append_alert_to_csv(alert)
 
             with open(json_file, "w", encoding="utf-8") as f:
                 json.dump(alert, f, indent=4)
