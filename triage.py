@@ -48,8 +48,20 @@ def main():
     for log_file in log_files:
         logger.info(f"Starting analysis for {log_file}")
 
+        if not os.path.isfile(log_file):
+            logger.warning(f"Log file not found, skipping: {log_file}")
+            continue
+
         with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-            log_data = f.read()
+            log_data = f.read().strip()
+
+        if not log_data:
+            logger.warning(f"Log file is empty, skipping: {log_file}")
+            continue
+
+        if len(log_data) > 50000:
+            logger.warning(f"Log file exceeds 50,000 characters, truncating: {log_file}")
+            log_data = log_data[:50000]
 
         user_prompt = build_user_prompt(log_data)
 
