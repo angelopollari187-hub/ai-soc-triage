@@ -19,6 +19,10 @@ Automates security log analysis using AI to detect threats, map activity to MITR
 - Slack alerting for HIGH and CRITICAL incidents
 - IP enrichment with geolocation, ASN/organization, hosting, and proxy context
 - SOC case tracking with Incident ID, timestamp, and status
+  
+## 🧠 Analyst Insight Layer
+
+Alerts include an analyst insight field that summarizes AI confidence, enrichment context, VirusTotal verdict, and validation guidance. This reinforces that AI output should support, not replace, analyst judgment.
 
 ## 💡 Why This Matters
 
