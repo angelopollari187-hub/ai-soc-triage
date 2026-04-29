@@ -21,7 +21,15 @@ CSV_HEADERS = [
     "asn_org",
     "hosting",
     "proxy",
+    "vt_status",
+    "vt_malicious",
+    "vt_suspicious",
+    "vt_harmless",
+    "vt_undetected",
+    "vt_reputation",
     "recommended_action",
+    "vt_verdict",
+    "analyst_insight",
 ]
 
 
@@ -34,6 +42,7 @@ def append_alert_to_csv(alert: dict, csv_path: str = "output/alerts_summary.csv"
         os.makedirs(os.path.dirname(csv_path), exist_ok=True)
 
         enrichment = alert.get("enrichment", {})
+        virustotal = alert.get("virustotal", {})
 
         row = {
             "incident_id": alert.get("incident_id", "N/A"),
@@ -50,7 +59,15 @@ def append_alert_to_csv(alert: dict, csv_path: str = "output/alerts_summary.csv"
             "asn_org": enrichment.get("asn", "N/A"),
             "hosting": enrichment.get("hosting", "N/A"),
             "proxy": enrichment.get("proxy", "N/A"),
+            "vt_status": virustotal.get("vt_status", "N/A"),
+            "vt_malicious": virustotal.get("vt_malicious", "N/A"),
+            "vt_suspicious": virustotal.get("vt_suspicious", "N/A"),
+            "vt_harmless": virustotal.get("vt_harmless", "N/A"),
+            "vt_undetected": virustotal.get("vt_undetected", "N/A"),
+            "vt_reputation": virustotal.get("vt_reputation", "N/A"),
             "recommended_action": alert.get("recommended_action", "N/A"),
+            "vt_verdict": virustotal.get("vt_verdict", "N/A"),
+            "analyst_insight": alert.get("analyst_insight", "N/A"),
         }
 
         file_exists = os.path.isfile(csv_path)

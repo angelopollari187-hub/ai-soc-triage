@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from dotenv import load_dotenv
 import anthropic
 
+from virustotal import lookup_ip_virustotal
 from logger_config import get_logger
 from prompt_template import SYSTEM_PROMPT, build_user_prompt
 from enrichment import extract_public_ip, enrich_ip
@@ -126,6 +127,7 @@ def main():
 
         public_ip = extract_public_ip(log_data)
         enrichment = enrich_ip(public_ip)
+        vt_enrichment = lookup_ip_virustotal(enrichment.get("ip"))
 
         logger.info(f"Completed analysis for {log_file}")
         logger.info(f"Risk level: {parsed.get('risk_level')}")
@@ -146,6 +148,15 @@ def main():
             "false_positive_likelihood": parsed.get("false_positive_likelihood"),
             "recommended_action": parsed.get("recommended_action"),
             "enrichment": enrichment,
+            "virustotal": vt_enrichment,
+
+            "analyst_insight": (
+                f"AI classified this event as {parsed.get('risk_level')} with "
+                f"{parsed.get('confidence')} confidence. Enrichment showed public IP context "
+                f"for {enrichment.get('ip', 'N/A')} and VirusTotal verdict "
+                f"{vt_enrichment.get('vt_verdict', 'N/A')}. Analyst should validate the AI finding "
+                f"against raw logs, endpoint telemetry, and business context before escalation."
+            ),
         }
 
         if risk in ["HIGH", "CRITICAL"]:

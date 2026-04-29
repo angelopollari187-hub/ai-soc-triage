@@ -30,6 +30,7 @@ def send_slack_alert(alert: dict) -> bool:
         logger.warning(message)
         return False
 
+    # Core fields
     incident_id = alert.get("incident_id", "N/A")
     timestamp = alert.get("timestamp", "N/A")
     status = alert.get("status", "OPEN")
@@ -39,13 +40,17 @@ def send_slack_alert(alert: dict) -> bool:
     confidence = alert.get("confidence", "N/A")
     false_positive = alert.get("false_positive_likelihood", "N/A")
     recommended_action = alert.get("recommended_action", "N/A")
+    analyst_insight = alert.get("analyst_insight", "N/A")
+    # Enrichment
     enrichment = alert.get("enrichment", {})
+    virustotal = alert.get("virustotal", {})
 
     emoji = get_severity_emoji(risk_level)
 
     payload = {
         "text": f"{emoji} AI-SOC Triage Alert - {risk_level}",
         "blocks": [
+            # HEADER
             {
                 "type": "header",
                 "text": {
@@ -54,6 +59,8 @@ def send_slack_alert(alert: dict) -> bool:
                     "emoji": True,
                 },
             },
+
+            # INCIDENT META
             {
                 "type": "section",
                 "fields": [
@@ -63,6 +70,8 @@ def send_slack_alert(alert: dict) -> bool:
                     {"type": "mrkdwn", "text": f"*Source File:*\n`{source_file}`"},
                 ],
             },
+
+            # RISK DETAILS
             {
                 "type": "section",
                 "fields": [
@@ -72,6 +81,8 @@ def send_slack_alert(alert: dict) -> bool:
                     {"type": "mrkdwn", "text": f"*False Positive Likelihood:*\n{false_positive}%"},
                 ],
             },
+
+            # IP ENRICHMENT
             {
                 "type": "section",
                 "fields": [
@@ -91,7 +102,28 @@ def send_slack_alert(alert: dict) -> bool:
                     },
                 ],
             },
+
+            #  VIRUSTOTAL BLOCK 
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*VirusTotal Status:*\n{virustotal.get('vt_status', 'N/A')}"},
+                    {"type": "mrkdwn", "text": f"*VT Verdict:*\n{virustotal.get('vt_verdict', 'N/A')}"},
+                    {"type": "mrkdwn", "text": f"*VT Reputation:*\n{virustotal.get('vt_reputation', 'N/A')}"},
+                    {"type": "mrkdwn", "text": f"*VT Malicious / Suspicious:*\n{virustotal.get('vt_malicious', 'N/A')} / {virustotal.get('vt_suspicious', 'N/A')}"},
+                ],
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*Analyst Insight:*\n{analyst_insight}",
+                },
+            },
+
             {"type": "divider"},
+
+            # RESPONSE ACTION
             {
                 "type": "section",
                 "text": {
