@@ -32,9 +32,12 @@ SOC Dashboard (L1 Decision Support)
 ![Triage Demo](images/terminal_demo.png)
 ### 🚨 Slack Alert Output
 ![Slack Alert](images/slack_alert.png)
-### 📊 SOC Dashboard
-![SOC Dashboard](images/dashboardpt1.png)
-![SOC Dashboard](images/dashboardpt1.png)
+
+### 📊 SOC Dashboard — Queue & Prioritization
+![SOC Dashboard Overview](images/dashboardpt1.png)
+
+### 🔎 SOC Dashboard — Investigation & Decision Support
+![SOC Dashboard Detail](images/dashboardpt2.png)
 ---
 
 ## 🚀 Core Features
