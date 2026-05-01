@@ -1,6 +1,6 @@
 SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
 
-Generated At: 2026-04-30 22:27:01
+Generated At: 2026-04-30 23:27:28
 Original File: alerts/suspicious_data_transfer.json
 Alert Type: suspicious_data_transfer
 Alert Name: Suspicious Data Transfer

@@ -1,6 +1,6 @@
 SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
 
-Generated At: 2026-04-30 22:26:22
+Generated At: 2026-04-30 23:27:28
 Original File: alerts/impossible_travel.json
 Alert Type: impossible_travel
 Alert Name: Impossible Travel Detected

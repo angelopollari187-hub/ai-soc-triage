@@ -228,23 +228,59 @@ def save_converted_log(alert_path: str, log_text: str) -> str:
     return output_path
 
 
+def process_single_alert(alert_path: str) -> str:
+    alert = load_alert(alert_path)
+    alert_type = detect_alert_type(alert, alert_path)
+    log_text = convert_alert_to_log(alert, alert_path)
+    output_path = save_converted_log(alert_path, log_text)
+
+    print(f"[+] Alert type detected: {alert_type}")
+    print(f"[+] Converted alert to triage log: {output_path}")
+    print(f"    py triage.py --log {output_path} --save --json")
+
+    return output_path
+
+
+def process_batch(alert_dir: str) -> list[str]:
+    if not os.path.isdir(alert_dir):
+        raise ValueError(f"Batch path is not a directory: {alert_dir}")
+
+    converted_logs = []
+
+    for filename in os.listdir(alert_dir):
+        if filename.endswith(".json"):
+            alert_path = os.path.join(alert_dir, filename)
+            print(f"\n[+] Processing alert file: {alert_path}")
+            output_path = process_single_alert(alert_path)
+            converted_logs.append(output_path)
+
+    print("\n=== Batch Conversion Summary ===")
+    print(f"Total alerts converted: {len(converted_logs)}")
+
+    if converted_logs:
+        print("\nNext option:")
+        print("Run all generated logs through triage:")
+        print("    py triage.py --batch generated_logs/ --save --json")
+
+    return converted_logs
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Convert SIEM/UEBA alert JSON into AI-SOC triage log input"
     )
-    parser.add_argument("--alert", required=True, help="Path to SIEM/UEBA alert JSON file")
+
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--alert", help="Path to a single SIEM/UEBA alert JSON file")
+    group.add_argument("--batch", help="Directory of SIEM/UEBA alert JSON files")
 
     args = parser.parse_args()
 
-    alert = load_alert(args.alert)
-    alert_type = detect_alert_type(alert, args.alert)
-    log_text = convert_alert_to_log(alert, args.alert)
-    output_path = save_converted_log(args.alert, log_text)
+    if args.alert:
+        process_single_alert(args.alert)
 
-    print(f"[+] Alert type detected: {alert_type}")
-    print(f"[+] Converted alert to triage log: {output_path}")
-    print("[+] Next command:")
-    print(f"    py triage.py --log {output_path} --save --json")
+    if args.batch:
+        process_batch(args.batch)
 
 
 if __name__ == "__main__":
