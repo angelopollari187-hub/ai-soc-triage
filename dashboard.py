@@ -18,7 +18,7 @@ import io
 import os
 import streamlit as st
 import pandas as pd
-
+import streamlit.components.v1 as components
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
@@ -685,7 +685,11 @@ else:
       </table>
     </div>
     """
-    st.markdown(table_html, unsafe_allow_html=True)
+    components.html(
+    table_html,
+    height=420,
+    scrolling=True,
+    )
 
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 

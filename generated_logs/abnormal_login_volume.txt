@@ -1,0 +1,38 @@
+SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
+
+Generated At: 2026-04-30 22:26:45
+Original File: alerts/abnormal_login_volume.json
+Alert Type: abnormal_login_volume
+Alert Name: Abnormal Login Volume
+Source Platform: Splunk UEBA Simulation
+User: jsmith
+Source IP: 45.83.12.91
+Destination IP: N/A
+Risk Score / Severity: HIGH
+Normalized Risk Hint: HIGH
+
+Expected MITRE Context:
+Tactic: Credential Access
+Technique: T1110 - Brute Force
+Confidence Hint: MEDIUM-HIGH
+
+Scenario Context:
+Potential brute force or password spraying activity.
+
+Description:
+High number of failed login attempts followed by a successful authentication
+
+
+Scenario-Specific Fields:
+User: jsmith
+Source IP: 45.83.12.91
+Failed Attempts: 47
+Success After Failures: True
+Target System: vpn_gateway
+Behavior: High volume of failed login attempts followed by a possible successful authentication.
+Primary Concern: Password spraying, brute force, or credential stuffing.
+False Positive Considerations: User lockout recovery, mistyped password loop, misconfigured service account, or automated application retry.
+
+
+Raw Events:
+No raw events provided.

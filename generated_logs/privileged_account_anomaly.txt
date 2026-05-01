@@ -1,0 +1,39 @@
+SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
+
+Generated At: 2026-04-30 22:27:16
+Original File: alerts/privileged_account_anomaly.json
+Alert Type: privileged_account_anomaly
+Alert Name: Privileged Account Anomaly
+Source Platform: Splunk UEBA Simulation
+User: admin01
+Source IP: 172.16.5.10
+Destination IP: N/A
+Risk Score / Severity: CRITICAL
+Normalized Risk Hint: CRITICAL
+
+Expected MITRE Context:
+Tactic: Persistence / Privilege Escalation
+Technique: T1098 - Account Manipulation
+Confidence Hint: HIGH
+
+Scenario Context:
+Potential privileged account misuse or unauthorized administrative change.
+
+Description:
+Privileged account performing unusual administrative actions outside normal behavior window
+
+
+Scenario-Specific Fields:
+User: admin01
+Source IP: 172.16.5.10
+Activity: Created new admin account and modified group policies
+New Account: backup_admin
+Privilege Level: Domain Admin
+Location: Internal Network
+Behavior: Privileged user performed unusual administrative activity outside the normal behavior window.
+Primary Concern: Unauthorized privilege escalation, persistence, or account manipulation.
+False Positive Considerations: Approved maintenance window, helpdesk admin task, onboarding/offboarding workflow, or scheduled group policy change.
+
+
+Raw Events:
+No raw events provided.

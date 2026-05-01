@@ -1,0 +1,12 @@
+{
+  "alert_type": "privileged_account_anomaly",
+  "user": "admin01",
+  "timestamp": "2026-04-30T19:30:00Z",
+  "source_ip": "172.16.5.10",
+  "location": "Internal Network",
+  "activity": "Created new admin account and modified group policies",
+  "new_account": "backup_admin",
+  "privilege_level": "Domain Admin",
+  "description": "Privileged account performing unusual administrative actions outside normal behavior window",
+  "risk_score": "CRITICAL"
+}

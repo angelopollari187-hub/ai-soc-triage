@@ -1,0 +1,39 @@
+SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
+
+Generated At: 2026-04-30 22:26:22
+Original File: alerts/impossible_travel.json
+Alert Type: impossible_travel
+Alert Name: Impossible Travel Detected
+Source Platform: Splunk UEBA
+User: jdoe
+Source IP: 185.199.110.153
+Destination IP: 10.0.0.12
+Risk Score / Severity: 82
+Normalized Risk Hint: HIGH
+
+Expected MITRE Context:
+Tactic: Initial Access
+Technique: T1078 - Valid Accounts
+Confidence Hint: HIGH
+
+Scenario Context:
+Potential account takeover through impossible travel authentication pattern.
+
+Description:
+User authenticated from New York and San Francisco within 12 minutes.
+
+
+Scenario-Specific Fields:
+User: jdoe
+Source IP: 185.199.110.153
+Destination IP: 10.0.0.12
+Risk Score: 82
+Behavior: Successful authentications from geographically distant locations within an unrealistic time window.
+Primary Concern: Possible account takeover using valid credentials.
+False Positive Considerations: VPN, proxy, travel, cloud login routing, shared account, or identity provider location mismatch.
+
+
+Raw Events:
+2026-04-29 18:08:02 login_success user=jdoe src_ip=10.1.5.20 location=New York device=WIN-101
+2026-04-29 18:20:12 login_success user=jdoe src_ip=185.199.110.153 location=San Francisco device=WIN-101
+2026-04-29 18:21:33 vpn_session_started user=jdoe src_ip=185.199.110.153

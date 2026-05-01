@@ -1,0 +1,14 @@
+{
+  "alert_name": "Impossible Travel Detected",
+  "source": "Splunk UEBA",
+  "user": "jdoe",
+  "src_ip": "185.199.110.153",
+  "dest_ip": "10.0.0.12",
+  "risk_score": 82,
+  "description": "User authenticated from New York and San Francisco within 12 minutes.",
+  "raw_events": [
+    "2026-04-29 18:08:02 login_success user=jdoe src_ip=10.1.5.20 location=New York device=WIN-101",
+    "2026-04-29 18:20:12 login_success user=jdoe src_ip=185.199.110.153 location=San Francisco device=WIN-101",
+    "2026-04-29 18:21:33 vpn_session_started user=jdoe src_ip=185.199.110.153"
+  ]
+}

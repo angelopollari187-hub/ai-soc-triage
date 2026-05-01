@@ -1,0 +1,40 @@
+SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
+
+Generated At: 2026-04-30 22:27:01
+Original File: alerts/suspicious_data_transfer.json
+Alert Type: suspicious_data_transfer
+Alert Name: Suspicious Data Transfer
+Source Platform: Splunk UEBA Simulation
+User: mjones
+Source IP: 10.0.0.25
+Destination IP: 185.220.101.47
+Risk Score / Severity: CRITICAL
+Normalized Risk Hint: CRITICAL
+
+Expected MITRE Context:
+Tactic: Exfiltration
+Technique: T1048 - Exfiltration Over Alternative Protocol
+Confidence Hint: HIGH
+
+Scenario Context:
+Potential outbound data exfiltration to an unusual external destination.
+
+Description:
+Large outbound data transfer to previously unseen external destination
+
+
+Scenario-Specific Fields:
+User: mjones
+Source IP: 10.0.0.25
+Destination IP: 185.220.101.47
+Destination Domain: unknown-storage-service.com
+Destination Country: Unknown
+Bytes Transferred MB: 1250
+Protocol: HTTPS
+Behavior: Large outbound data transfer to a previously unseen or unusual destination.
+Primary Concern: Data exfiltration over HTTPS or cloud storage.
+False Positive Considerations: Backup job, CI/CD artifact upload, cloud sync client, legitimate developer tooling, or authorized vendor transfer.
+
+
+Raw Events:
+No raw events provided.

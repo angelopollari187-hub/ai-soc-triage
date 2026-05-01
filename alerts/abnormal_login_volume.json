@@ -1,0 +1,12 @@
+{
+  "alert_type": "abnormal_login_volume",
+  "user": "jsmith",
+  "timestamp": "2026-04-30T21:10:00Z",
+  "source_ip": "45.83.12.91",
+  "location": "Unknown",
+  "failed_attempts": 47,
+  "success_after_failures": true,
+  "target_system": "vpn_gateway",
+  "description": "High number of failed login attempts followed by a successful authentication",
+  "risk_score": "HIGH"
+}

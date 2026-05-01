@@ -1,0 +1,13 @@
+{
+  "alert_type": "suspicious_data_transfer",
+  "user": "mjones",
+  "timestamp": "2026-04-30T20:45:00Z",
+  "source_ip": "10.0.0.25",
+  "destination_ip": "185.220.101.47",
+  "destination_country": "Unknown",
+  "bytes_transferred_mb": 1250,
+  "protocol": "HTTPS",
+  "destination_domain": "unknown-storage-service.com",
+  "description": "Large outbound data transfer to previously unseen external destination",
+  "risk_score": "CRITICAL"
+}
