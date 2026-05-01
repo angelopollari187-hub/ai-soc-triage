@@ -33,8 +33,7 @@ SOC Dashboard (L1 Decision Support)
 ### 🚨 Slack Alert Output
 ![Slack Alert](images/slack_alert.png)
 ### 📊 SOC Dashboard
-![SOC Dashboard](images/dashboradpt1.png)
-
+![SOC Dashboard]((images/dashboradpt1.png)(images/dashboradpt2.png))
 ---
 
 ## 🚀 Core Features
