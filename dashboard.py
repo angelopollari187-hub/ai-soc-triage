@@ -19,6 +19,7 @@ import os
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
+import streamlit as st
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
@@ -269,7 +270,7 @@ div[data-testid="stTextInput"] > div > div > input {
     font-family: 'Courier New', monospace!important;
     font-size: 0.78rem!important;
 }
-.stDataFrame { display: none !important; }
+
 div[data-testid="stFileUploader"] {
     background: #161b22;
     border: 1px dashed #30363d;
@@ -567,7 +568,23 @@ risk_opts_dyn     = _sorted_opts(df["risk_level"], preferred_order=risk_order_pr
 # ── Remaining sidebar filter widgets ──
 with st.sidebar:
     search_q  = st.text_input("Search (ID / IP / technique / file)", placeholder="Search…", label_visibility="visible")
-    sel_risk  = st.selectbox("Risk Level", risk_opts_dyn)
+    
+    def format_risk_label(risk):
+        colors = {
+            "CRITICAL": "🔴 CRITICAL",
+            "HIGH": "🟠 HIGH",
+            "MEDIUM": "🟡 MEDIUM",
+            "LOW": "🟢 LOW",
+            "All": "All"
+        }
+        return colors.get(risk, risk)
+
+    formatted_risk_opts = [format_risk_label(r) for r in risk_opts_dyn]
+
+    selected_risk_label = st.selectbox("Risk Level", formatted_risk_opts)
+
+    # Map back to original value
+    sel_risk = risk_opts_dyn[formatted_risk_opts.index(selected_risk_label)]
     sel_status = st.selectbox("Status", status_opts_dyn)
     sel_vt    = st.selectbox("VT Verdict", vt_opts_dyn)
     highcrit_only = st.checkbox("High / Critical only")
@@ -634,61 +651,42 @@ st.markdown(
 if dff.empty:
     st.warning("No alerts match the current filters.")
 else:
-    # Build HTML table
-    def short_ts(ts):
-        ts = str(ts)
-        if " " in ts:
-            return ts[11:19]  # HH:MM:SS
-        return ts[:10]
+    queue_cols = [
+        "incident_id",
+        "timestamp",
+        "status",
+        "risk_level",
+        "mitre_technique",
+        "confidence",
+        "false_positive_likelihood",
+        "enriched_ip",
+        "vt_verdict",
+        "vt_malicious",
+        "source_file",
+    ]
 
-    rows_html = ""
-    for _, row in dff.iterrows():
-        iid   = safe_str(row.get("incident_id"))
-        ts    = short_ts(row.get("timestamp", ""))
-        fp    = safe_float(row.get("false_positive_likelihood", 0))
-        fp_color = "#3fb950" if fp >= 60 else "#d29922" if fp >= 35 else "#f85149"
-        mitre = safe_str(row.get("mitre_technique", ""))[:28]
-        conf = safe_str(row.get("confidence", "N/A"))
-        ip    = safe_str(row.get("enriched_ip", ""))
-        vt_m  = safe_int(row.get("vt_malicious", 0))
+    available_cols = [col for col in queue_cols if col in dff.columns]
 
-        rows_html += f"""
-        <tr class="alert-row">
-          <td style="color:#388bfd">{iid}</td>
-          <td style="color:#7d8590">{ts}</td>
-          <td>{status_badge(safe_str(row.get("status")))}</td>
-          <td>{risk_badge(safe_str(row.get("risk_level")))}</td>
-          <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;color:#c9d1d9">{mitre}</td>
-          <td style="color:#c9d1d9">{conf}</td>
-          <td>
-            <div style="font-family:'Courier New',monospace;font-size:0.72rem;color:{fp_color}">{fp:.0f}%</div>
-            <div class="fp-bar-bg"><div class="fp-bar-fill" style="width:{min(fp,100):.0f}%;background:{fp_color}"></div></div>
-          </td>
-          <td style="color:#7d8590">{ip}</td>
-          <td>{vt_badge(safe_str(row.get("vt_verdict")))}</td>
-          <td style="color:{'#f85149' if vt_m > 0 else '#7d8590'}">{vt_m}</td>
-          <td style="color:#7d8590">{safe_str(row.get("source_file","")).replace(".csv","")}</td>
-        </tr>
-        """
+    queue_df = dff[available_cols].copy()
 
-    table_html = f"""
-    <div class="soc-table-wrapper">
-      <table class="soc-table">
-        <thead>
-          <tr>
-            <th>Incident ID</th><th>Time</th><th>Status</th><th>Risk</th>
-            <th>MITRE Technique</th><th>Conf%</th><th>FP%</th>
-            <th>Enriched IP</th><th>VT Verdict</th><th>VT Mal</th><th>Source</th>
-          </tr>
-        </thead>
-        <tbody>{rows_html}</tbody>
-      </table>
-    </div>
-    """
-    components.html(
-    table_html,
-    height=420,
-    scrolling=True,
+    def color_risk(val):
+        if val == "CRITICAL":
+            return "color: #ff4d4d; font-weight: bold"
+        elif val == "HIGH":
+            return "color: #ff9933; font-weight: bold"
+        elif val == "MEDIUM":
+            return "color: #ffd633"
+        elif val == "LOW":
+            return "color: #33cc33"
+        return ""
+
+    styled_df = queue_df.style.map(color_risk, subset=["risk_level"])
+
+    st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
     )
 
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)

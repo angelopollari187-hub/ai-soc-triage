@@ -1,158 +1,265 @@
-# AI-Powered SOC Triage System
+# 🛡️ AI-Powered SOC Triage System
 
-Automates security log analysis using AI to detect threats, map activity to MITRE ATT&CK, enrich alerts with IP intelligence, and generate SOC-style incident response actions.
+An end-to-end **AI-assisted Security Operations Center (SOC) triage platform** that simulates real-world analyst workflows — from SIEM alert ingestion to investigation, enrichment, alerting, and dashboard-driven decision support.
+
+---
+
+## 🧭 System Architecture
+
+```text
+SIEM / UEBA Alert (JSON)
+        ↓
+Alert Ingestion & Normalization
+        ↓
+AI-Powered Triage (Claude)
+        ↓
+MITRE ATT&CK Mapping
+        ↓
+Threat Enrichment (IP + VirusTotal)
+        ↓
+Slack Alerting (SOC Simulation)
+        ↓
+CSV Case Tracking
+        ↓
+SOC Dashboard (L1 Decision Support)
+```
+
+---
 
 ## 🔎 SOC Triage Demo
 
 ### 🖥️ Terminal Analysis Output
 ![Triage Demo](images/terminal_demo.png)
-
-### 🚨 Slack Alret Output
+### 🚨 Slack Alert Output
 ![Slack Alert](images/slack_alert.png)
+### 📊 SOC Dashboard
+![SOC Dashboard]((images/dashboradpt1.png)(images/dashboradpt2.png))
+---
 
-## Features
-- AI-assisted log triage
-- MITRE ATT&CK mapping
-- Risk scoring and confidence levels
-- Batch processing for multiple log scenarios
-- Automated incident response recommendations
-- Slack alerting for HIGH and CRITICAL incidents
-- IP enrichment with geolocation, ASN/organization, hosting, and proxy context
-- SOC case tracking with Incident ID, timestamp, and status
-  
+## 🚀 Core Features
+
+### 🔍 AI-Powered Triage
+
+* Analyzes logs using AI to generate:
+
+  * Incident summaries
+  * Risk classification
+  * Confidence scoring
+  * False positive likelihood
+  * Recommended response actions
+
+---
+
+### 🧠 MITRE ATT&CK Mapping
+
+* Dynamically maps alerts to MITRE techniques based on behavior
+* Examples:
+
+  * T1078 – Valid Accounts (Account takeover)
+  * T1110 – Brute Force (Login abuse)
+  * T1048 – Exfiltration (Data transfer)
+  * T1098 – Account Manipulation (Privileged abuse)
+
+---
+
+### 🌐 Threat Intelligence Enrichment
+
+* Public IP enrichment includes:
+
+  * Country & city
+  * ASN / organization
+  * Hosting / proxy detection
+* **VirusTotal integration**
+
+  * Reputation scoring
+  * Malicious / suspicious counts
+  * Verdict classification
+
+---
+
+### 🔔 SOC Alerting (Slack Integration)
+
+* Sends structured alerts for HIGH / CRITICAL incidents
+* Includes:
+
+  * Incident metadata
+  * MITRE mapping
+  * Threat intel
+  * Recommended actions
+
+---
+
+### 📁 SIEM / UEBA Alert Ingestion
+
+* Accepts structured alert JSON (Splunk-style simulation)
+* Supports:
+
+  * Impossible travel
+  * Brute force / login abuse
+  * Data exfiltration
+  * Privileged account anomalies
+
+---
+
+### ⚙️ Batch Processing
+
+```bash
+py alert_ingest.py --batch alerts/
+py triage.py --batch generated_logs/ --save --json
+```
+
+---
+
+### 📊 SOC Dashboard (Streamlit)
+
+Designed for **L1 analyst decision support**, not just visualization.
+
+Includes:
+
+* Alert queue (filterable + searchable)
+* Risk & severity filtering
+* Triage decision support hints
+* Analyst insight summaries
+* Threat intelligence panel
+* Recommended action breakdown
+* Expandable analytics (risk, MITRE, VT)
+
+---
+
 ## 🧠 Analyst Insight Layer
 
-Alerts include an analyst insight field that summarizes AI confidence, enrichment context, VirusTotal verdict, and validation guidance. This reinforces that AI output should support, not replace, analyst judgment.
+Each alert includes:
 
-## 💡 Why This Matters
+* AI reasoning summary
+* Confidence explanation
+* Threat intel context
+* Validation guidance
 
-This project simulates a real SOC workflow by:
-- Reducing alert fatigue through automated triage
-- Mapping raw security events to MITRE ATT&CK techniques
-- Prioritizing threats based on severity and confidence
-- Enriching alerts with external IP context
-- Generating actionable response steps for analysts
+> Reinforces that AI **assists analysts — not replaces them**
 
-This reflects how modern SOC teams investigate, prioritize, enrich, and respond to security incidents.
+---
 
-## Detection Capabilities
+## 💡 Why This Project Matters
 
-| Scenario | Risk | MITRE ATT&CK Mapping |
-|----------|------|----------------------|
-| Failed SSH authentication | MEDIUM | T1110.001 - Brute Force: Password Guessing |
-| Lateral movement | HIGH | T1078 - Valid Accounts |
-| Data exfiltration | HIGH | T1048.002 - Exfiltration Over Encrypted Non-C2 Protocol |
-| Malware execution | CRITICAL | T1059.004 - Unix Shell |
-| Privilege escalation | CRITICAL | T1548.003 - Sudo and Sudo Caching |
+This system simulates how modern SOC teams operate:
 
-## 🔍 Threat Enrichment
+* Reduces alert fatigue through automated triage
+* Prioritizes incidents using risk + confidence
+* Maps behavior to MITRE ATT&CK
+* Enriches alerts with external intelligence
+* Produces structured, explainable investigations
+* Accelerates L1 → L2 escalation decisions
 
-The system enriches detected public IP addresses with additional context, including:
+---
 
-- Enriched IP address
-- City and country
-- ASN and organization
-- Hosting and proxy indicators
+## 🧪 Detection Capabilities
 
-This enrichment appears directly in Slack alerts and JSON alert output to support faster analyst decision-making.
+| Scenario                   | Risk     | MITRE |
+| -------------------------- | -------- | ----- |
+| Impossible travel          | HIGH     | T1078 |
+| Abnormal login volume      | HIGH     | T1110 |
+| Data exfiltration          | CRITICAL | T1048 |
+| Privileged account anomaly | CRITICAL | T1098 |
+| Malware execution          | CRITICAL | T1059 |
 
-## 🧾 SOC Case Tracking
+---
 
-HIGH and CRITICAL alerts include SOC-style case metadata:
+## 🔄 Full Workflow
 
-- Incident ID
-- Timestamp
-- Status: OPEN
-- Source file
-- Risk level
-- MITRE technique
-- Confidence score
-- False positive likelihood
+### 1. Ingest SIEM Alert
 
-This makes each alert easier to track, document, and discuss during incident response workflows.
-
-## 🔔 Slack Alerting
-
-The project sends formatted Slack alerts for HIGH and CRITICAL incidents to simulate SOC alert routing.
-
-Slack alerts include:
-
-- Incident ID
-- Status
-- Timestamp
-- Risk level
-- MITRE ATT&CK technique
-- Source file
-- Threat enrichment context
-- Recommended response action
-
-## 🚀 How to Run
-
-### 1. Clone the Repository
 ```bash
-git clone https://github.com/angelopollari187-hub/ai-soc-triage.git
-cd ai-soc-triage
+py alert_ingest.py --alert alerts/impossible_travel.json
 ```
-### 2. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-### 3. Configure Environment Variables
-```bash
-ANTHROPIC_API_KEY=your_api_key_here
-SLACK_WEBHOOK_URL=your_slack_webhook_url_here
-```
-### 4. Run a Single Log
-```bash
-python triage.py --log sample_logs/failed_auth.txt --save --json
-```
-### 5. Run Batch Processing
-```bash
-python triage.py --batch sample_logs/ --save --json
-```
-## 🧪 Example Output
-```bash
-AI-SOC TRIAGE REPORT
-File: sample_logs/malware_exec.txt
 
-INCIDENT SUMMARY:
-A suspicious systemd service was started, downloaded a shell script from a suspicious external IP, made it executable, and ran it.
+### 2. Run AI Triage
 
-MITRE ATT&CK MAPPING:
-Tactic: Execution
-Technique: T1059.004 - Unix Shell
+```bash
+py triage.py --log generated_logs/impossible_travel.txt --save --json
+```
 
-RISK LEVEL: CRITICAL
+### 3. Batch Mode
+
+```bash
+py alert_ingest.py --batch alerts/
+py triage.py --batch generated_logs/ --save --json
+```
+
+### 4. Launch Dashboard
+
+```bash
+python -m streamlit run dashboard.py
+```
+
+---
+
+## 📦 Example Output
+
+```text
+RISK LEVEL: HIGH
 AI CONFIDENCE: HIGH
-FALSE POSITIVE LIKELIHOOD: 3%
+FALSE POSITIVE LIKELIHOOD: 15%
+
+MITRE:
+T1078 - Valid Accounts
 
 RECOMMENDED ACTION:
-Immediately isolate the affected server, terminate processes spawned by the payload, remove the suspicious service and payload file, review persistence mechanisms, and block the source IP.
+Immediately suspend the account and verify activity with the user...
 ```
-### 🛠️ Tech Stack
-**Languages & Core Tools**
-- Python
-- Command-line interface (CLI)
 
-**Security & Analysis**
-- MITRE ATT&CK Framework
-- Log analysis & incident triage workflows
-- Risk scoring and threat prioritization
+---
 
-**AI & Automation**
-- Claude API (Anthropic)
-- AI-driven log parsing and threat classification
+## 🛠️ Tech Stack
 
-**Threat Intelligence**
-- IP enrichment (geolocation, ASN, hosting/proxy detection)
+### Core
 
-**Integrations**
-- Slack Incoming Webhooks (SOC alerting)
+* Python
+* CLI-based automation
 
-**Data Handling**
-- JSON alert output
-- Structured reporting
+### Security
 
-**Dev Tools**
-- Git & GitHub
-- VS Code
+* MITRE ATT&CK
+* SOC triage workflows
+* Threat modeling
+
+### AI
+
+* Claude (Anthropic API)
+* AI-assisted investigation logic
+
+### Threat Intelligence
+
+* VirusTotal API
+* IP enrichment
+
+### Integrations
+
+* Slack Webhooks
+
+### Data
+
+* JSON alerts
+* CSV tracking
+* Streamlit dashboard
+
+### Dev Tools
+
+* Git & GitHub
+* VS Code
+
+---
+
+## 📌 Future Enhancements
+
+* SOAR-style auto-response actions
+* Splunk / SIEM API integration
+* Real-time log streaming
+* Detection engineering (rule tuning)
+* False positive learning model
+
+---
+
+## 👤 Author
+
+**Angelo Pollari**
+Cybersecurity | SOC Operations | AI + Security Automation
