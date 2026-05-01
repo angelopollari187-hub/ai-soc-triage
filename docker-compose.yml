@@ -1,0 +1,9 @@
+services:
+  ai-soc-triage:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./sample_logs:/app/sample_logs
+      - ./output:/app/output
+    command: ["python", "triage.py"]
