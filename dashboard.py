@@ -117,36 +117,7 @@ def clear_dashboard_runtime_data() -> tuple[bool, str]:
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
-def clear_dashboard_runtime_data() -> tuple[bool, str]:
-    """
-    Clear runtime dashboard/triage output files without deleting source logs or code.
-    """
-    deleted_count = 0
 
-    try:
-        OUTPUT_DIR.mkdir(exist_ok=True)
-        UPLOAD_DIR.mkdir(exist_ok=True)
-
-        # Delete generated CSV, JSON alerts, and text reports
-        for pattern in ["alerts_summary.csv", "*.json", "*.txt"]:
-            for file_path in OUTPUT_DIR.glob(pattern):
-                if file_path.is_file():
-                    file_path.unlink()
-                    deleted_count += 1
-
-        # Delete uploaded raw logs
-        for file_path in UPLOAD_DIR.glob("*"):
-            if file_path.is_file():
-                file_path.unlink()
-                deleted_count += 1
-            elif file_path.is_dir():
-                shutil.rmtree(file_path)
-                deleted_count += 1
-
-        return True, f"Cleared {deleted_count} runtime file(s)."
-
-    except Exception as e:
-        return False, f"Failed to clear runtime data: {e}"
 st.set_page_config(
     page_title="AI-SOC Triage Console",
     layout="wide",
@@ -616,7 +587,107 @@ def action_items_html(text):
         for p in parts
     )
     return f'<div class="action-box">{items}</div>'
+def build_splunk_searches(row) -> dict:
+    """
+    Build suggested Splunk SPL validation searches for the selected alert.
+    These searches prioritize raw indicator matching because field names vary
+    across Splunk environments.
+    """
+    import re
 
+    def valid_value(value):
+        value = safe_str(value, "")
+        invalid_values = {"", "—", "n/a", "N/A", "None", "Unknown", "Internal"}
+        return value not in invalid_values
+
+    searches = {}
+
+    enriched_ip = safe_str(row.get("enriched_ip"), "")
+    source_file = safe_str(row.get("source_file"), "")
+    mitre = safe_str(row.get("mitre_technique"), "")
+    incident_id = safe_str(row.get("incident_id"), "")
+
+    # Extract MITRE ID if present, such as T1059 or T1110.001
+    mitre_match = re.search(r"T\d{4}(?:\.\d{3})?", mitre)
+    mitre_id = mitre_match.group(0) if mitre_match else ""
+
+    # Clean behavior text from MITRE string
+    behavior_text = mitre
+    if mitre_id:
+        behavior_text = mitre.replace(mitre_id, "").replace("-", " ").replace("—", " ").strip()
+
+    # 1. Broad raw indicator search
+    if valid_value(enriched_ip):
+        searches["Broad Indicator Search"] = (
+            f'index=* "{enriched_ip}" earliest=-24h latest=now'
+        )
+    elif valid_value(source_file):
+        searches["Broad Source Search"] = (
+            f'index=* "{source_file}" earliest=-24h latest=now'
+        )
+    elif valid_value(mitre_id):
+        searches["Broad MITRE Search"] = (
+            f'index=* "{mitre_id}" earliest=-24h latest=now'
+        )
+
+    # 2. Correlation search using available values
+    correlation_terms = []
+
+    for value in [enriched_ip, mitre_id, behavior_text, source_file, incident_id]:
+        if valid_value(value):
+            correlation_terms.append(f'"{value}"')
+
+    if correlation_terms:
+        searches["Broad Correlation Search"] = (
+            f'index=* ({" OR ".join(correlation_terms)}) earliest=-24h latest=now'
+        )
+
+    # 3. Optional field-based IP template
+    # This is intentionally labeled as optional because Splunk field names vary.
+    if valid_value(enriched_ip):
+        searches["Optional Field-Based IP Template"] = (
+            f'index=* (src_ip="{enriched_ip}" OR dest_ip="{enriched_ip}" OR '
+            f'src="{enriched_ip}" OR dest="{enriched_ip}" OR '
+            f'clientip="{enriched_ip}" OR ip="{enriched_ip}") '
+            f'earliest=-24h latest=now'
+        )
+
+    # 4. Behavior / MITRE validation search
+    behavior_terms = []
+
+    if valid_value(mitre_id):
+        behavior_terms.append(f'"{mitre_id}"')
+
+    if valid_value(behavior_text):
+        behavior_terms.append(f'"{behavior_text}"')
+
+    # Add common behavior pivots based on the MITRE text
+    lower_mitre = mitre.lower()
+
+    if "powershell" in lower_mitre or "command" in lower_mitre or "scripting" in lower_mitre:
+        behavior_terms.extend(['"powershell"', '"cmd.exe"', '"encodedcommand"'])
+
+    if "brute" in lower_mitre or "password" in lower_mitre:
+        behavior_terms.extend(['"failed"', '"invalid password"', '"authentication failure"'])
+
+    if "valid accounts" in lower_mitre or "account" in lower_mitre:
+        behavior_terms.extend(['"successful login"', '"new session"', '"privileged account"'])
+
+    if "exfiltration" in lower_mitre or "transfer" in lower_mitre:
+        behavior_terms.extend(['"bytes_out"', '"data transfer"', '"upload"', '"large outbound"'])
+
+    if "credential" in lower_mitre or "dumping" in lower_mitre:
+        behavior_terms.extend(['"lsass"', '"credential"', '"mimikatz"', '"dump"'])
+
+    # Remove duplicates while preserving order
+    behavior_terms = list(dict.fromkeys(behavior_terms))
+
+    if behavior_terms:
+        searches["Behavior / MITRE Validation Search"] = (
+            f'index=* ({" OR ".join(behavior_terms)}) earliest=-7d latest=now'
+        )
+
+    return searches
 def load_csv(file_obj):
     """Load CSV from a file-like object and normalize column names."""
     df = pd.read_csv(file_obj)
@@ -999,10 +1070,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
-# ANALYST INSIGHT
-# ─────────────────────────────────────────────
-# ─────────────────────────────────────────────
-# ANALYST INSIGHT
+# AI ANALYST INSIGHT
 # ─────────────────────────────────────────────
 insight = safe_str(sel_row.get("analyst_insight", ""), "No analyst insight available.")
 
@@ -1017,9 +1085,6 @@ st.markdown(f"""
 # ─────────────────────────────────────────────
 # RECOMMENDED ACTION
 # ─────────────────────────────────────────────
-# ─────────────────────────────────────────────
-# RECOMMENDED ACTION
-# ─────────────────────────────────────────────
 rec = safe_str(sel_row.get("recommended_action", ""), "")
 
 st.markdown(f"""
@@ -1029,9 +1094,94 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+
+# ─────────────────────────────────────────────
+# ANALYST HANDOFF SUMMARY
+# ─────────────────────────────────────────────
+
+# Pull selected alert values for the handoff summary.
+handoff_incident_id = safe_str(sel_row.get("incident_id"))
+handoff_timestamp = safe_str(sel_row.get("timestamp"))
+handoff_status = safe_str(sel_row.get("status"))
+handoff_risk = safe_str(sel_row.get("risk_level"))
+handoff_mitre = safe_str(sel_row.get("mitre_technique"))
+handoff_confidence = safe_str(sel_row.get("confidence"))
+handoff_fp = safe_str(sel_row.get("false_positive_likelihood"))
+handoff_source = safe_str(sel_row.get("source_file"))
+
+handoff_ip = safe_str(sel_row.get("enriched_ip"))
+handoff_country = safe_str(sel_row.get("country"))
+handoff_city = safe_str(sel_row.get("city"))
+handoff_asn = safe_str(sel_row.get("asn_org"))
+handoff_hosting = "Yes" if sel_row.get("hosting", False) else "No"
+handoff_proxy = "Yes" if sel_row.get("proxy", False) else "No"
+
+handoff_vt_verdict = safe_str(sel_row.get("vt_verdict"))
+handoff_vt_malicious = safe_str(sel_row.get("vt_malicious"))
+handoff_vt_suspicious = safe_str(sel_row.get("vt_suspicious"))
+
+handoff_summary = f"""SOC Analyst Handoff Summary
+
+Incident: {handoff_incident_id} | Risk: {handoff_risk} | MITRE: {handoff_mitre}
+Time: {handoff_timestamp} | Status: {handoff_status} | Source: {handoff_source}
+Confidence: {handoff_confidence} | False Positive Likelihood: {handoff_fp}%
+
+Key Context:
+- Indicator: {handoff_ip}
+- Location/ASN: {handoff_city}, {handoff_country} | {handoff_asn}
+- VT Verdict: {handoff_vt_verdict} | Malicious: {handoff_vt_malicious} | Suspicious: {handoff_vt_suspicious}
+- Hosting: {handoff_hosting} | Proxy: {handoff_proxy}
+
+Assessment:
+{insight}
+
+Recommended Action:
+{rec}
+
+Analyst Follow-Up:
+1. Validate in SIEM/EDR using the indicator, host/user, and timeframe.
+2. Confirm whether the activity is expected or business-approved.
+3. Escalate if telemetry confirms malicious or unauthorized behavior.
+"""
+
+with st.expander("📋 Analyst Handoff Summary", expanded=False):
+    st.text_area(
+        "Copy-ready handoff summary",
+        value=handoff_summary,
+        height=300,
+        label_visibility="collapsed",
+    )
+
+    st.caption(
+        "Copy into Splunk notes, ServiceNow/Jira, Slack escalation, or SOC shift handoff. Validate AI guidance against raw telemetry and business context."
+    )
+
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 
 
+# ─────────────────────────────────────────────
+# SUGGESTED SPLUNK VALIDATION SEARCHES
+# ─────────────────────────────────────────────
+splunk_searches = build_splunk_searches(sel_row)
+
+with st.expander("🔎 Suggested Splunk Validation Searches", expanded=False):
+    st.caption(
+        "These SPL queries are validation starting points. Adjust index, sourcetype, host, user, "
+        "field names, and time range for your Splunk environment."
+    )
+
+    if not splunk_searches:
+        st.info("No strong indicators were available to generate Splunk searches.")
+    else:
+        for search_name, spl_query in splunk_searches.items():
+            st.markdown(f"**{search_name}**")
+            st.code(spl_query, language="spl")
+
+    st.caption(
+        "The helper prioritizes raw text searches first because Splunk field names vary across environments."
+    )
+
+st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 # ─────────────────────────────────────────────
 # ANALYTICS (collapsed by default)
 # ─────────────────────────────────────────────
@@ -1045,40 +1195,67 @@ with st.expander("📊  Analytics Overview", expanded=False):
         with ac1:
             st.markdown("**Risk Distribution**")
             risk_counts = dff["risk_level"].value_counts().reindex(
-                ["CRITICAL","HIGH","MEDIUM","LOW"], fill_value=0
+                ["CRITICAL", "HIGH", "MEDIUM", "LOW"], fill_value=0
             )
             risk_df = risk_counts.reset_index()
             risk_df.columns = ["Risk Level", "Count"]
+
             import altair as alt
+
             chart = alt.Chart(risk_df).mark_bar().encode(
                 x=alt.X("Count:Q", title=""),
-                y=alt.Y("Risk Level:N", sort=["CRITICAL","HIGH","MEDIUM","LOW"], title=""),
-                color=alt.Color("Risk Level:N", scale=alt.Scale(
-                    domain=["CRITICAL","HIGH","MEDIUM","LOW"],
-                    range=["#f85149","#f0883e","#d29922","#3fb950"]
-                ), legend=None),
-                tooltip=["Risk Level","Count"],
+                y=alt.Y("Risk Level:N", sort=["CRITICAL", "HIGH", "MEDIUM", "LOW"], title=""),
+                color=alt.Color(
+                    "Risk Level:N",
+                    scale=alt.Scale(
+                        domain=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                        range=["#f85149", "#f0883e", "#d29922", "#3fb950"],
+                    ),
+                    legend=None,
+                ),
+                tooltip=["Risk Level", "Count"],
             ).properties(height=140).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590", gridColor="#21262d", domainColor="#30363d", tickColor="#30363d"
+                labelColor="#7d8590",
+                gridColor="#21262d",
+                domainColor="#30363d",
+                tickColor="#30363d",
             )
+
             st.altair_chart(chart, use_container_width=True)
 
         # VT verdict
         with ac2:
             st.markdown("**VT Verdict Distribution**")
             vt_counts = dff["vt_verdict"].value_counts().reset_index()
-            vt_counts.columns = ["Verdict","Count"]
-            color_map = {"Malicious":"#f85149","Suspicious":"#f0883e","Clean":"#3fb950","Unknown":"#7d8590"}
+            vt_counts.columns = ["Verdict", "Count"]
+
+            color_map = {
+                "Malicious": "#f85149",
+                "Suspicious": "#f0883e",
+                "Clean": "#3fb950",
+                "Unknown": "#7d8590",
+                "Low Reputation": "#f0883e",
+            }
+
             chart2 = alt.Chart(vt_counts).mark_bar().encode(
                 x=alt.X("Count:Q", title=""),
                 y=alt.Y("Verdict:N", title=""),
-                color=alt.Color("Verdict:N", scale=alt.Scale(
-                    domain=list(color_map.keys()), range=list(color_map.values())
-                ), legend=None),
-                tooltip=["Verdict","Count"],
+                color=alt.Color(
+                    "Verdict:N",
+                    scale=alt.Scale(
+                        domain=list(color_map.keys()),
+                        range=list(color_map.values()),
+                    ),
+                    legend=None,
+                ),
+                tooltip=["Verdict", "Count"],
             ).properties(height=140).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590", gridColor="#21262d", domainColor="#30363d", tickColor="#30363d"
+                labelColor="#7d8590",
+                gridColor="#21262d",
+                domainColor="#30363d",
+                tickColor="#30363d",
             )
+
             st.altair_chart(chart2, use_container_width=True)
 
         ac3, ac4 = st.columns(2)
@@ -1087,29 +1264,39 @@ with st.expander("📊  Analytics Overview", expanded=False):
         with ac3:
             st.markdown("**Top MITRE Techniques**")
             mitre_counts = dff["mitre_technique"].value_counts().head(8).reset_index()
-            mitre_counts.columns = ["Technique","Count"]
+            mitre_counts.columns = ["Technique", "Count"]
+
             chart3 = alt.Chart(mitre_counts).mark_bar(color="#bc8cff").encode(
                 x=alt.X("Count:Q", title=""),
                 y=alt.Y("Technique:N", sort="-x", title=""),
-                tooltip=["Technique","Count"],
+                tooltip=["Technique", "Count"],
             ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590", gridColor="#21262d", domainColor="#30363d", tickColor="#30363d",
-                labelLimit=180
+                labelColor="#7d8590",
+                gridColor="#21262d",
+                domainColor="#30363d",
+                tickColor="#30363d",
+                labelLimit=180,
             )
+
             st.altair_chart(chart3, use_container_width=True)
 
         # Top enriched IPs
         with ac4:
             st.markdown("**Top Enriched IPs**")
             ip_counts = dff["enriched_ip"].value_counts().head(8).reset_index()
-            ip_counts.columns = ["IP","Count"]
+            ip_counts.columns = ["IP", "Count"]
+
             chart4 = alt.Chart(ip_counts).mark_bar(color="#388bfd").encode(
                 x=alt.X("Count:Q", title=""),
                 y=alt.Y("IP:N", sort="-x", title=""),
-                tooltip=["IP","Count"],
+                tooltip=["IP", "Count"],
             ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590", gridColor="#21262d", domainColor="#30363d", tickColor="#30363d"
+                labelColor="#7d8590",
+                gridColor="#21262d",
+                domainColor="#30363d",
+                tickColor="#30363d",
             )
+
             st.altair_chart(chart4, use_container_width=True)
 
 
@@ -1118,13 +1305,16 @@ with st.expander("📊  Analytics Overview", expanded=False):
 # ─────────────────────────────────────────────
 with st.expander("🗂  Raw Alert Record", expanded=False):
     import json
+
     raw = {k: v for k, v in sel_row.items() if not k.startswith("_")}
+
     # Convert non-serializable types
     for k, v in raw.items():
-        if isinstance(v, (bool,)):
+        if isinstance(v, bool):
             raw[k] = bool(v)
         elif pd.isna(v) if isinstance(v, float) else False:
             raw[k] = None
+
     st.code(json.dumps(raw, indent=2, default=str), language="json")
 
 
