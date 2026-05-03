@@ -17,6 +17,7 @@ Columns: incident_id, timestamp, status, source_file, risk_level,
 import io
 import os
 import sys
+import shutil
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -24,9 +25,12 @@ from datetime import datetime
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
+
+
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploaded_logs"
-CSV_PATH = BASE_DIR / "output" / "alerts_summary.csv"
+OUTPUT_DIR = BASE_DIR / "output"
+CSV_PATH = OUTPUT_DIR / "alerts_summary.csv"
 
 
 def save_uploaded_log(uploaded_log) -> Path:
@@ -79,9 +83,70 @@ def run_triage_from_dashboard(log_path: Path) -> tuple[bool, str]:
     except Exception as e:
         return False, f"Dashboard triage execution failed: {e}"
 
+
+def clear_dashboard_runtime_data() -> tuple[bool, str]:
+    """
+    Clear runtime dashboard/triage output files without deleting source logs or code.
+    """
+    deleted_count = 0
+
+    try:
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        UPLOAD_DIR.mkdir(exist_ok=True)
+
+        # Delete generated CSV, JSON alerts, and text reports.
+        for pattern in ["alerts_summary.csv", "*.json", "*.txt"]:
+            for file_path in OUTPUT_DIR.glob(pattern):
+                if file_path.is_file():
+                    file_path.unlink()
+                    deleted_count += 1
+
+        # Delete uploaded raw logs.
+        for file_path in UPLOAD_DIR.glob("*"):
+            if file_path.is_file():
+                file_path.unlink()
+                deleted_count += 1
+            elif file_path.is_dir():
+                shutil.rmtree(file_path)
+                deleted_count += 1
+
+        return True, f"Cleared {deleted_count} runtime file(s)."
+
+    except Exception as e:
+        return False, f"Failed to clear runtime data: {e}"
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
+def clear_dashboard_runtime_data() -> tuple[bool, str]:
+    """
+    Clear runtime dashboard/triage output files without deleting source logs or code.
+    """
+    deleted_count = 0
+
+    try:
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        UPLOAD_DIR.mkdir(exist_ok=True)
+
+        # Delete generated CSV, JSON alerts, and text reports
+        for pattern in ["alerts_summary.csv", "*.json", "*.txt"]:
+            for file_path in OUTPUT_DIR.glob(pattern):
+                if file_path.is_file():
+                    file_path.unlink()
+                    deleted_count += 1
+
+        # Delete uploaded raw logs
+        for file_path in UPLOAD_DIR.glob("*"):
+            if file_path.is_file():
+                file_path.unlink()
+                deleted_count += 1
+            elif file_path.is_dir():
+                shutil.rmtree(file_path)
+                deleted_count += 1
+
+        return True, f"Cleared {deleted_count} runtime file(s)."
+
+    except Exception as e:
+        return False, f"Failed to clear runtime data: {e}"
 st.set_page_config(
     page_title="AI-SOC Triage Console",
     layout="wide",
@@ -607,8 +672,13 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        "<div style='font-family:Courier New,monospace;font-size:0.62rem;color:#7d8590;line-height:1.5;margin-bottom:8px'>Upload one .txt file for one incident/log bundle. The dashboard runs one AI triage review per uploaded file.</div>",
+        unsafe_allow_html=True,
+    )
+
     uploaded_log = st.file_uploader(
-        "Upload raw log (.txt)",
+        "Upload single-incident log (.txt)",
         type=["txt"],
         key="raw_log_upload",
     )
@@ -634,6 +704,27 @@ with st.sidebar:
 
     st.markdown("---")
 
+    st.markdown(
+        "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Dashboard Data Controls</div>",
+        unsafe_allow_html=True,
+    )
+
+    confirm_clear = st.checkbox("Confirm clear runtime data")
+
+    if st.button("🧹 Clear Runtime Dashboard Data", use_container_width=True):
+        if not confirm_clear:
+            st.warning("Check the confirmation box first.")
+        else:
+            success, message = clear_dashboard_runtime_data()
+            if success:
+                st.success(message)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(message)
+
+    st.markdown("---")
+
 # ── Load data (must happen before filter widgets so options reflect real values) ──
 if uploaded is not None:
     df = load_csv(uploaded)
@@ -647,7 +738,11 @@ else:
     else:
         df = pd.DataFrame(DEMO_DATA)
         using_demo = True
-        st.info("No CSV uploaded — showing demo data. Upload **output/alerts_summary.csv** via the sidebar.", icon="ℹ️")
+    st.info(
+    "No real alerts_summary.csv found — showing built-in demo data for preview only. "
+    "Upload a CSV or run AI triage on a .txt log to generate real dashboard data.",
+    icon="ℹ️"
+    )
 
 # ── Build dynamic filter option lists from the loaded data ──
 def _sorted_opts(series, preferred_order=None):
@@ -690,7 +785,8 @@ with st.sidebar:
     sel_vt    = st.selectbox("VT Verdict", vt_opts_dyn)
     highcrit_only = st.checkbox("High / Critical only")
     st.markdown("---")
-    st.markdown("<div style='font-family:Courier New,monospace;font-size:0.65rem;color:#7d8590;letter-spacing:0.08em'>UPLOAD YOUR CSV OR USE DEMO DATA BELOW</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-family:Courier New,monospace;font-size:0.65rem;color:#7d8590;letter-spacing:0.08em'>UPLOAD YOUR CSV OR USE DEMO DATA BELOW</div>", 
+                unsafe_allow_html=True)
 
 # ── Apply filters ──
 dff = df.copy()

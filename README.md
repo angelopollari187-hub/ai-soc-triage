@@ -39,6 +39,20 @@ SOC Dashboard (L1 Decision Support)
 ### 🔎 SOC Dashboard — Investigation & Decision Support
 ![SOC Dashboard Detail](images/dashboardpt2.png)
 ---
+### 📥 Raw Log Upload — Single-Incident Review
+
+The Streamlit dashboard supports raw `.txt` log uploads for single-incident triage. This feature is designed for one suspicious log file or one related log bundle at a time.
+
+When a `.txt` file is uploaded, the dashboard runs one AI triage review against the full file and appends the result to `output/alerts_summary.csv`.
+
+**Current behavior:**
+
+- One `.txt` upload = one incident review
+- The uploaded file is analyzed as a complete log bundle
+- The result appears as one new alert in the Alert Queue
+- The generated alert includes risk level, MITRE ATT&CK mapping, confidence, false-positive likelihood, VirusTotal enrichment, AI analyst insight, and recommended action
+
+This feature is not currently designed to split one large `.txt` file into many separate alert rows. For multiple separate incidents, upload each incident as its own `.txt` file or process multiple log files through batch mode.
 
 ## 🚀 Core Features
 

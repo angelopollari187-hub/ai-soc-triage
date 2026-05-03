@@ -1,7 +1,7 @@
 SIEM / UEBA ALERT NORMALIZED FOR AI-SOC TRIAGE
 
-Generated At: 2026-04-30 23:27:28
-Original File: alerts/abnormal_login_volume.json
+Generated At: 2026-05-02 22:36:35
+Original File: alerts\abnormal_login_volume.json
 Alert Type: abnormal_login_volume
 Alert Name: Abnormal Login Volume
 Source Platform: Splunk UEBA Simulation
