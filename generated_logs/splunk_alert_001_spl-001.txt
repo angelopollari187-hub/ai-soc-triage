@@ -1,0 +1,29 @@
+Splunk Alert Export - AI-SOC Triage Input
+
+Alert Metadata:
+Event ID: SPL-001
+Timestamp: 2026-05-02 09:14:22
+Signature: PowerShell Encoded Command
+Severity: Critical
+Action: allowed
+
+Splunk Context:
+Index: security
+Sourcetype: WinEventLog:Security
+Source: WinEventLog:Security
+Host: WIN-WS-014
+
+Entities / Indicators:
+User: jdoe
+Source IP: 10.0.0.25
+Destination IP: 185.220.101.47
+Process Name: powershell.exe
+Command Line: powershell.exe -enc SQBFAFgA
+URL: N/A
+File Hash: N/A
+
+Raw Event:
+PowerShell launched with encoded command and outbound connection to 185.220.101.47
+
+Analyst Instruction:
+Review this Splunk alert export as one security incident. Classify the risk level, map the activity to MITRE ATT&CK where possible, estimate confidence and false-positive likelihood, identify important indicators, and recommend next SOC validation steps.

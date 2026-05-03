@@ -1,0 +1,29 @@
+Splunk Alert Export - AI-SOC Triage Input
+
+Alert Metadata:
+Event ID: SPL-002
+Timestamp: 2026-05-02 09:22:10
+Signature: Large Outbound Data Transfer
+Severity: High
+Action: allowed
+
+Splunk Context:
+Index: security
+Sourcetype: pan:traffic
+Source: pan:traffic
+Host: fw-edge-01
+
+Entities / Indicators:
+User: asmith
+Source IP: 10.0.0.44
+Destination IP: 45.83.12.91
+Process Name: python.exe
+Command Line: python.exe upload_client.py
+URL: N/A
+File Hash: N/A
+
+Raw Event:
+High outbound byte transfer from internal workstation to external destination over TCP 443
+
+Analyst Instruction:
+Review this Splunk alert export as one security incident. Classify the risk level, map the activity to MITRE ATT&CK where possible, estimate confidence and false-positive likelihood, identify important indicators, and recommend next SOC validation steps.

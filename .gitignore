@@ -1,6 +1,7 @@
 .env
 output/
 uploaded_logs/
+runtime/
 __pycache__/
 *.pyc
 .DS_Store

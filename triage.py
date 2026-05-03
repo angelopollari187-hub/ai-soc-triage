@@ -23,10 +23,11 @@ def main():
 
     parser.add_argument("--log", help="Path to single log file")
     parser.add_argument("--batch", help="Directory of log files")
+    parser.add_argument("--prefix", default="", help="Only process batch files starting with this prefix")
     parser.add_argument("--save", action="store_true", help="Save output to file")
     parser.add_argument("--json", action="store_true", help="Save structured JSON alert output")
     parser.add_argument("--quiet", action="store_true", help="Minimal output")
-
+    
     args = parser.parse_args()
 
     load_dotenv()
@@ -42,14 +43,23 @@ def main():
 
     if args.log:
         log_files.append(args.log)
+
     elif args.batch:
         for file in os.listdir(args.batch):
-            if file.endswith(".txt"):
-                log_files.append(os.path.join(args.batch, file))
+            if not file.endswith(".txt"):
+                continue
+
+            if args.prefix and not file.startswith(args.prefix):
+                continue
+
+            log_files.append(os.path.join(args.batch, file))
+
+        log_files.sort()
+
     else:
         logger.error("No input provided. Must provide --log or --batch.")
         raise ValueError("Provide --log or --batch")
-
+    
     total = 0
     success = 0
     failed = 0

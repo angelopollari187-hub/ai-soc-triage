@@ -31,6 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploaded_logs"
 OUTPUT_DIR = BASE_DIR / "output"
 CSV_PATH = OUTPUT_DIR / "alerts_summary.csv"
+SPLUNK_RUNTIME_DIR = BASE_DIR / "runtime" / "splunk_imports"
 
 
 def save_uploaded_log(uploaded_log) -> Path:
@@ -83,7 +84,141 @@ def run_triage_from_dashboard(log_path: Path) -> tuple[bool, str]:
     except Exception as e:
         return False, f"Dashboard triage execution failed: {e}"
 
+def build_splunk_log_bundle(row: dict, row_num: int) -> str:
+    """
+    Convert one Splunk CSV row into a triage-ready log bundle.
+    This lets the dashboard process Splunk exports without requiring the analyst
+    to manually convert rows into .txt files.
+    """
+    def get_field(name, fallback="N/A"):
+        value = row.get(name, fallback)
+        if value is None:
+            return fallback
+        value = str(value).strip()
+        return value if value else fallback
 
+    event_id = get_field("event_id", f"SPL-{row_num:03d}")
+    timestamp = get_field("_time")
+    index = get_field("index")
+    sourcetype = get_field("sourcetype")
+    host = get_field("host")
+    source = get_field("source")
+    signature = get_field("signature", "Splunk Alert")
+    severity = get_field("severity")
+    user = get_field("user")
+    src_ip = get_field("src_ip")
+    dest_ip = get_field("dest_ip")
+    process_name = get_field("process_name")
+    command_line = get_field("command_line")
+    url = get_field("url")
+    file_hash = get_field("file_hash")
+    action = get_field("action")
+    raw = get_field("raw")
+
+    return f"""Splunk Alert Export - AI-SOC Triage Input
+
+Alert Metadata:
+Event ID: {event_id}
+Timestamp: {timestamp}
+Signature: {signature}
+Severity: {severity}
+Action: {action}
+
+Splunk Context:
+Index: {index}
+Sourcetype: {sourcetype}
+Source: {source}
+Host: {host}
+
+Entities / Indicators:
+User: {user}
+Source IP: {src_ip}
+Destination IP: {dest_ip}
+Process Name: {process_name}
+Command Line: {command_line}
+URL: {url}
+File Hash: {file_hash}
+
+Raw Event:
+{raw}
+
+Analyst Instruction:
+Review this Splunk alert export row as one security incident. Classify the risk level, map the activity to MITRE ATT&CK where possible, estimate confidence and false-positive likelihood, identify important indicators, and recommend next SOC validation steps.
+"""
+
+
+def save_splunk_export_as_log_bundles(uploaded_csv) -> tuple[Path, int]:
+    """
+    Save an uploaded Splunk alert export CSV as triage-ready .txt event bundles.
+    Each CSV row becomes one temporary .txt file for batch AI triage.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    batch_dir = SPLUNK_RUNTIME_DIR / f"splunk_export_{timestamp}"
+    batch_dir.mkdir(parents=True, exist_ok=True)
+
+    df_splunk = pd.read_csv(uploaded_csv)
+    df_splunk.columns = [c.strip().lower() for c in df_splunk.columns]
+
+    if df_splunk.empty:
+        raise ValueError("The uploaded Splunk export CSV has no rows.")
+
+    created = 0
+
+    for idx, row in df_splunk.iterrows():
+        row_num = idx + 1
+        event_id = str(row.get("event_id", f"SPL-{row_num:03d}")).strip()
+        safe_event_id = (
+            event_id.lower()
+            .replace(" ", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .replace(":", "_")
+        )
+
+        output_file = batch_dir / f"splunk_alert_{row_num:03d}_{safe_event_id}.txt"
+        log_bundle = build_splunk_log_bundle(row.to_dict(), row_num)
+
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(log_bundle)
+
+        created += 1
+
+    return batch_dir, created
+
+
+def run_batch_triage_from_dashboard(batch_dir: Path) -> tuple[bool, str]:
+    """
+    Run triage.py in batch mode against generated Splunk alert log bundles.
+    """
+    command = [
+        sys.executable,
+        str(BASE_DIR / "triage.py"),
+        "--batch",
+        str(batch_dir),
+        "--save",
+        "--json",
+        "--quiet",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+
+        if result.returncode == 0:
+            return True, result.stdout or "Splunk export triage completed successfully."
+
+        return False, result.stderr or result.stdout or "Splunk export triage failed."
+
+    except subprocess.TimeoutExpired:
+        return False, "Splunk export triage timed out after 300 seconds."
+
+    except Exception as e:
+        return False, f"Dashboard Splunk export triage failed: {e}"
 def clear_dashboard_runtime_data() -> tuple[bool, str]:
     """
     Clear runtime dashboard/triage output files without deleting source logs or code.
@@ -93,6 +228,7 @@ def clear_dashboard_runtime_data() -> tuple[bool, str]:
     try:
         OUTPUT_DIR.mkdir(exist_ok=True)
         UPLOAD_DIR.mkdir(exist_ok=True)
+        SPLUNK_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
         # Delete generated CSV, JSON alerts, and text reports.
         for pattern in ["alerts_summary.csv", "*.json", "*.txt"]:
@@ -109,6 +245,12 @@ def clear_dashboard_runtime_data() -> tuple[bool, str]:
             elif file_path.is_dir():
                 shutil.rmtree(file_path)
                 deleted_count += 1
+
+        # Delete temporary Splunk import bundles.
+        runtime_root = BASE_DIR / "runtime"
+        if runtime_root.exists():
+            shutil.rmtree(runtime_root)
+            deleted_count += 1
 
         return True, f"Cleared {deleted_count} runtime file(s)."
 
@@ -266,6 +408,16 @@ table.soc-table tr.selected td { background: rgba(56,139,253,0.12); }
 }
 .field-label { color: #7d8590; font-size: 0.72rem; font-family: 'Courier New', monospace; flex-shrink: 0; }
 .field-value { color: #e6edf3; font-size: 0.75rem; font-family: 'Courier New', monospace; text-align: right; }
+
+.field-value.path-wrap {
+    max-width: 62%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-align: right;
+    line-height: 1.45;
+}
+
 .field-value.accent  { color: #388bfd; }
 .field-value.red     { color: #f85149; }
 .field-value.orange  { color: #f0883e; }
@@ -731,9 +883,10 @@ with st.sidebar:
     )
 
     uploaded = st.file_uploader(
-        "Upload alerts_summary.csv",
+        "Upload processed alerts_summary.csv",
         type=["csv"],
         label_visibility="collapsed",
+        key="processed_alert_summary_upload",
     )
 
     st.markdown("---")
@@ -776,6 +929,48 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown(
+        "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Splunk Alert Export</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        "<div style='font-family:Courier New,monospace;font-size:0.62rem;color:#7d8590;line-height:1.5;margin-bottom:8px'>Upload a Splunk alert export CSV. Each row is automatically converted into a triage-ready incident and processed by the AI triage engine.</div>",
+        unsafe_allow_html=True,
+    )
+
+    uploaded_splunk_csv = st.file_uploader(
+        "Upload Splunk alert export (.csv)",
+        type=["csv"],
+        key="splunk_export_upload",
+    )
+
+    run_splunk_button = st.button("⚡ Run Splunk Export Triage", use_container_width=True)
+
+    if run_splunk_button:
+        if uploaded_splunk_csv is None:
+            st.error("Upload a Splunk alert export CSV before running triage.")
+        else:
+            try:
+                with st.spinner("Preparing Splunk export rows for AI triage..."):
+                    splunk_batch_dir, splunk_event_count = save_splunk_export_as_log_bundles(uploaded_splunk_csv)
+
+                with st.spinner(f"Running AI triage on {splunk_event_count} Splunk alert row(s)..."):
+                    success, message = run_batch_triage_from_dashboard(splunk_batch_dir)
+
+                if success:
+                    st.success(f"Splunk export triage complete. Processed {splunk_event_count} alert row(s).")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("Splunk export triage failed.")
+                    st.code(message)
+
+            except Exception as e:
+                st.error(f"Splunk export processing failed: {e}")
+
+    st.markdown("---")
+
+    st.markdown(
         "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Dashboard Data Controls</div>",
         unsafe_allow_html=True,
     )
@@ -795,13 +990,24 @@ with st.sidebar:
                 st.error(message)
 
     st.markdown("---")
-
 # ── Load data (must happen before filter widgets so options reflect real values) ──
 if uploaded is not None:
     df = load_csv(uploaded)
+
+    required_dashboard_cols = {"incident_id", "risk_level", "mitre_technique"}
+
+    if not required_dashboard_cols.issubset(set(df.columns)):
+        st.error(
+            "This CSV does not look like a processed AI-SOC alerts_summary.csv. "
+            "If this is a Splunk alert export, use the 'Splunk Alert Export' uploader in the sidebar instead."
+        )
+        st.stop()
+
     using_demo = False
+
 else:
     default_path = CSV_PATH
+
     if default_path.exists():
         df = load_csv(default_path)
         using_demo = False
@@ -809,12 +1015,11 @@ else:
     else:
         df = pd.DataFrame(DEMO_DATA)
         using_demo = True
-    st.info(
-    "No real alerts_summary.csv found — showing built-in demo data for preview only. "
-    "Upload a CSV or run AI triage on a .txt log to generate real dashboard data.",
-    icon="ℹ️"
-    )
-
+        st.info(
+            "No real alerts_summary.csv found — showing built-in demo data for preview only. "
+            "Upload a CSV or run AI triage on a .txt log to generate real dashboard data.",
+            icon="ℹ️",
+        )
 # ── Build dynamic filter option lists from the loaded data ──
 def _sorted_opts(series, preferred_order=None):
     """Return ['All'] + unique non-blank values, with preferred_order first if supplied."""
@@ -904,6 +1109,31 @@ k2.metric("High / Critical",      highcrit_count)
 k3.metric("Avg FP Likelihood",    f"{avg_fp:.0f}%")
 k4.metric("Needs Escalation",     escalate_count)
 k5.metric("Unique IPs",           unique_ips)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <div class="detail-panel">
+      <div class="panel-title">Export Current View</div>
+      <div style="font-size:0.78rem;color:#7d8590;margin-bottom:10px">
+        Download the currently filtered dashboard results as a CSV for reporting, ticket attachment, or analyst handoff.
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+export_csv = dff.to_csv(index=False).encode("utf-8")
+export_filename = f"ai_soc_triage_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+st.download_button(
+    label="⬇️ Export Current Dashboard View",
+    data=export_csv,
+    file_name=export_filename,
+    mime="text/csv",
+    use_container_width=True,
+)
 
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 
@@ -1007,7 +1237,7 @@ with col_left:
       <div class="field-row"><span class="field-label">Timestamp</span><span class="field-value">{safe_str(sel_row.get("timestamp"))}</span></div>
       <div class="field-row"><span class="field-label">Status</span><span class="field-value">{status_badge(safe_str(sel_row.get("status")))}</span></div>
       <div class="field-row"><span class="field-label">Risk Level</span><span class="field-value">{risk_badge(risk_val)}</span></div>
-      <div class="field-row"><span class="field-label">Source File</span><span class="field-value muted">{safe_str(sel_row.get("source_file"))}</span></div>
+      <div class="field-row"><span class="field-label">Source File</span><span class="field-value muted path-wrap">{safe_str(sel_row.get("source_file"))}</span></div>
       <div class="field-row"><span class="field-label">MITRE</span><span class="field-value" style="font-size:0.7rem">{safe_str(sel_row.get("mitre_technique"))}</span></div>
       <div class="field-row"><span class="field-label">Confidence</span><span class="field-value">{conf_val}</span></div>
       <div class="field-row">

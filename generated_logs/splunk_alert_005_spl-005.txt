@@ -1,0 +1,29 @@
+Splunk Alert Export - AI-SOC Triage Input
+
+Alert Metadata:
+Event ID: SPL-005
+Timestamp: 2026-05-02 10:18:27
+Signature: Credential Dumping Behavior
+Severity: Critical
+Action: allowed
+
+Splunk Context:
+Index: security
+Sourcetype: edr:process
+Source: edr_process
+Host: WIN-SRV-022
+
+Entities / Indicators:
+User: svc_backup
+Source IP: 10.0.0.55
+Destination IP: 45.33.32.156
+Process Name: rundll32.exe
+Command Line: rundll32.exe comsvcs.dll MiniDump lsass.exe
+URL: N/A
+File Hash: hash_9f2a7c
+
+Raw Event:
+Suspicious LSASS memory access followed by outbound connection to external IP
+
+Analyst Instruction:
+Review this Splunk alert export as one security incident. Classify the risk level, map the activity to MITRE ATT&CK where possible, estimate confidence and false-positive likelihood, identify important indicators, and recommend next SOC validation steps.
