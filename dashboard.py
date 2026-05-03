@@ -16,10 +16,69 @@ Columns: incident_id, timestamp, status, source_file, risk_level,
 
 import io
 import os
+import sys
+import subprocess
+from pathlib import Path
+from datetime import datetime
+
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
-import streamlit as st
+BASE_DIR = Path(__file__).resolve().parent
+UPLOAD_DIR = BASE_DIR / "uploaded_logs"
+CSV_PATH = BASE_DIR / "output" / "alerts_summary.csv"
+
+
+def save_uploaded_log(uploaded_log) -> Path:
+    """
+    Save uploaded raw log into uploaded_logs/.
+    """
+    UPLOAD_DIR.mkdir(exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe_name = uploaded_log.name.replace(" ", "_")
+    saved_path = UPLOAD_DIR / f"{timestamp}_{safe_name}"
+
+    with open(saved_path, "wb") as f:
+        f.write(uploaded_log.getbuffer())
+
+    return saved_path
+
+
+def run_triage_from_dashboard(log_path: Path) -> tuple[bool, str]:
+    """
+    Run triage.py against a raw uploaded log file.
+    """
+    command = [
+        sys.executable,
+        str(BASE_DIR / "triage.py"),
+        "--log",
+        str(log_path),
+        "--save",
+        "--json",
+        "--quiet",
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            cwd=BASE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+
+        if result.returncode == 0:
+            return True, result.stdout or "AI triage completed successfully."
+
+        return False, result.stderr or result.stdout or "AI triage failed."
+
+    except subprocess.TimeoutExpired:
+        return False, "AI triage timed out after 180 seconds."
+
+    except Exception as e:
+        return False, f"Dashboard triage execution failed: {e}"
+
 # ─────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────
@@ -28,6 +87,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
 
 # ─────────────────────────────────────────────
 # STYLING
@@ -527,10 +587,51 @@ with col_t1:
 
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 
-# ── File uploader lives in sidebar — rendered first so Streamlit registers it ──
+# ── File uploaders live in sidebar — rendered first so Streamlit registers them ──
 with st.sidebar:
-    st.markdown("<div style='color:#388bfd;font-family:Courier New,monospace;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px'>⬡ SOC Console</div>", unsafe_allow_html=True)
-    uploaded = st.file_uploader("Upload alerts_summary.csv", type=["csv"], label_visibility="collapsed")
+    st.markdown(
+        "<div style='color:#388bfd;font-family:Courier New,monospace;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px'>⬡ SOC Console</div>",
+        unsafe_allow_html=True,
+    )
+
+    uploaded = st.file_uploader(
+        "Upload alerts_summary.csv",
+        type=["csv"],
+        label_visibility="collapsed",
+    )
+
+    st.markdown("---")
+
+    st.markdown(
+        "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Run New AI Triage</div>",
+        unsafe_allow_html=True,
+    )
+
+    uploaded_log = st.file_uploader(
+        "Upload raw log (.txt)",
+        type=["txt"],
+        key="raw_log_upload",
+    )
+
+    run_triage_button = st.button("🚀 Run AI Triage", use_container_width=True)
+
+    if run_triage_button:
+        if uploaded_log is None:
+            st.error("Upload a .txt log before running triage.")
+        else:
+            saved_log_path = save_uploaded_log(uploaded_log)
+
+            with st.spinner("Running AI triage on uploaded log..."):
+                success, message = run_triage_from_dashboard(saved_log_path)
+
+            if success:
+                st.success("Triage complete. Dashboard data updated.")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error("Triage failed.")
+                st.code(message)
+
     st.markdown("---")
 
 # ── Load data (must happen before filter widgets so options reflect real values) ──
@@ -538,8 +639,8 @@ if uploaded is not None:
     df = load_csv(uploaded)
     using_demo = False
 else:
-    default_path = os.path.join("output", "alerts_summary.csv")
-    if os.path.exists(default_path):
+    default_path = CSV_PATH
+    if default_path.exists():
         df = load_csv(default_path)
         using_demo = False
         st.info(f"Loaded from {default_path}", icon="📂")
