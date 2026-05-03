@@ -151,7 +151,7 @@ def main():
             "incident_id": incident_id,
             "source_file": log_file,
             "timestamp": timestamp,
-            "status": "OPEN",
+            "status": "NEW",
             "risk_level": parsed.get("risk_level"),
             "mitre_technique": parsed.get("attack_technique"),
             "confidence": parsed.get("confidence"),

@@ -219,6 +219,36 @@ def run_batch_triage_from_dashboard(batch_dir: Path) -> tuple[bool, str]:
 
     except Exception as e:
         return False, f"Dashboard Splunk export triage failed: {e}"
+def update_incident_status_in_csv(incident_id: str, new_status: str) -> tuple[bool, str]:
+    """
+    Update the analyst-controlled status for a selected incident in alerts_summary.csv.
+    """
+    try:
+        if not CSV_PATH.exists():
+            return False, "alerts_summary.csv does not exist yet. Run AI triage or upload processed data first."
+
+        df_status = pd.read_csv(CSV_PATH)
+        df_status.columns = [c.strip().lower().replace(" ", "_") for c in df_status.columns]
+
+        if "incident_id" not in df_status.columns:
+            return False, "alerts_summary.csv does not contain an incident_id column."
+
+        if "status" not in df_status.columns:
+            df_status["status"] = "NEW"
+
+        match = df_status["incident_id"].astype(str) == str(incident_id)
+
+        if not match.any():
+            return False, f"Incident {incident_id} was not found in alerts_summary.csv."
+
+        df_status.loc[match, "status"] = new_status
+        df_status.to_csv(CSV_PATH, index=False)
+
+        return True, f"Updated {incident_id} status to {new_status}."
+
+    except Exception as e:
+        return False, f"Failed to update incident status: {e}"
+    
 def clear_dashboard_runtime_data() -> tuple[bool, str]:
     """
     Clear runtime dashboard/triage output files without deleting source logs or code.
@@ -638,6 +668,18 @@ DEMO_DATA = [
         "analyst_insight": "Macro-enabled document opened from an email impersonating HR. The document made DNS requests to a newly registered domain. Internal IP only — no external C2 confirmed yet. FP possible if user opened a legitimate HR attachment.",
         "recommended_action": "Sandbox the document. Interview the user. Check DNS logs for follow-up connections from this host. Review email headers for spoofing indicators.",
     },
+    {
+        "incident_id": "INC-009", "timestamp": "2025-07-12 12:05:44", "status": "Open",
+        "source_file": "endpoint_edr.csv", "risk_level": "HIGH",
+        "mitre_technique": "T1003 - OS Credential Dumping",
+        "confidence": 86, "false_positive_likelihood": 10,
+        "enriched_ip": "45.33.32.156", "country": "United States", "city": "Fremont",
+        "asn_org": "AS63949 Linode", "hosting": True, "proxy": False,
+        "vt_status": "completed", "vt_malicious": 22, "vt_suspicious": 9,
+        "vt_harmless": 15, "vt_undetected": 20, "vt_reputation": -41, "vt_verdict": "Malicious",
+        "analyst_insight": "Follow-up EDR alert from the same Linode-associated indicator seen in another credential dumping case. LSASS access behavior was detected again, suggesting repeated credential harvesting activity or lateral movement from the same campaign. Because this shares the same enriched IP and MITRE technique as another alert, analysts should correlate both incidents before closing.",
+        "recommended_action": "Correlate with INC-007. Review process lineage, affected user accounts, and outbound connections. Isolate the endpoint if LSASS access is confirmed. Reset credentials for users active on the affected host.",
+    },
 ]
 
 
@@ -646,7 +688,60 @@ DEMO_DATA = [
 # ─────────────────────────────────────────────
 
 RISK_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+ANALYST_STATUS_OPTIONS = [
+    "NEW",
+    "REVIEWING",
+    "ESCALATED",
+    "CLOSED - TRUE POSITIVE",
+    "CLOSED - FALSE POSITIVE",
+    "CLOSED - BENIGN",
+]
 
+
+def normalize_analyst_status(value):
+    """
+    Normalize old AI/default statuses into analyst-controlled review states.
+    AI should not decide operational status, so unknown/legacy statuses become NEW.
+    """
+    raw = safe_str(value, "NEW").strip().upper()
+
+    if raw in ANALYST_STATUS_OPTIONS:
+        return raw
+
+    legacy_status_map = {
+        "OPEN": "NEW",
+        "INVESTIGATING": "NEW",
+        "IN PROGRESS": "NEW",
+        "CLOSED": "NEW",
+        "RESOLVED": "NEW",
+    }
+
+    return legacy_status_map.get(raw, "NEW")
+def normalize_vt_verdict(value):
+    """
+    Normalize VirusTotal verdict values so filtering works consistently across
+    demo data, Splunk-generated output, and AI-generated CSVs.
+    """
+    raw = safe_str(value, "Unknown").strip()
+
+    if raw in ("", "—", "n/a", "N/A", "None"):
+        return "Unknown"
+
+    raw_upper = raw.upper()
+
+    if raw_upper in ["MALICIOUS"]:
+        return "Malicious"
+
+    if raw_upper in ["SUSPICIOUS", "LOW REPUTATION"]:
+        return "Suspicious"
+
+    if raw_upper in ["CLEAN", "HARMLESS"]:
+        return "Clean"
+
+    if raw_upper in ["UNKNOWN", "UNDETECTED", "CLEAN / UNKNOWN", "CLEAN/UNKNOWN"]:
+        return "Unknown"
+
+    return raw.title()
 def safe_str(val, fallback="—"):
     if val is None or (isinstance(val, float) and pd.isna(val)):
         return fallback
@@ -844,22 +939,56 @@ def load_csv(file_obj):
     """Load CSV from a file-like object and normalize column names."""
     df = pd.read_csv(file_obj)
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
-    # Fill NaN strings
-    for col in ["status", "risk_level", "vt_verdict", "analyst_insight",
-                "recommended_action", "enriched_ip", "country", "city",
-                "asn_org", "mitre_technique", "source_file"]:
+
+    # Fill common text columns
+    for col in [
+        "status",
+        "risk_level",
+        "vt_verdict",
+        "analyst_insight",
+        "recommended_action",
+        "enriched_ip",
+        "country",
+        "city",
+        "asn_org",
+        "mitre_technique",
+        "source_file",
+    ]:
         if col in df.columns:
             df[col] = df[col].fillna("").astype(str)
-    for col in ["false_positive_likelihood",
-                "vt_malicious", "vt_suspicious", "vt_harmless",
-                "vt_undetected", "vt_reputation"]:
+
+    # Normalize numeric columns
+    for col in [
+        "false_positive_likelihood",
+        "vt_malicious",
+        "vt_suspicious",
+        "vt_harmless",
+        "vt_undetected",
+        "vt_reputation",
+    ]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Normalize boolean enrichment fields
     for col in ["hosting", "proxy"]:
         if col in df.columns:
-            df[col] = df[col].map(lambda x: str(x).strip().lower() in ("true","1","yes","t"))
-    return df
+            df[col] = df[col].map(
+                lambda x: str(x).strip().lower() in ("true", "1", "yes", "t")
+            )
 
+    # Analyst-controlled status normalization
+    if "status" not in df.columns:
+        df["status"] = "NEW"
+
+    df["status"] = df["status"].apply(normalize_analyst_status)
+
+    # VirusTotal verdict normalization
+    if "vt_verdict" not in df.columns:
+        df["vt_verdict"] = "Unknown"
+
+    df["vt_verdict"] = df["vt_verdict"].apply(normalize_vt_verdict)
+
+    return df
 
 # ─────────────────────────────────────────────
 # MAIN APP
@@ -1012,8 +1141,27 @@ else:
         df = load_csv(default_path)
         using_demo = False
         st.info(f"Loaded from {default_path}", icon="📂")
+
     else:
         df = pd.DataFrame(DEMO_DATA)
+
+        # Normalize demo VT values, but intentionally showcase analyst workflow statuses.
+        df["vt_verdict"] = df["vt_verdict"].apply(normalize_vt_verdict)
+
+        demo_status_showcase = [
+            "NEW",
+            "ESCALATED",
+            "REVIEWING",
+            "NEW",
+            "CLOSED - TRUE POSITIVE",
+            "CLOSED - FALSE POSITIVE",
+            "CLOSED - BENIGN",
+            "REVIEWING",
+            "ESCALATED",
+        ]
+
+        df["status"] = demo_status_showcase[:len(df)]
+
         using_demo = True
         st.info(
             "No real alerts_summary.csv found — showing built-in demo data for preview only. "
@@ -1031,12 +1179,21 @@ def _sorted_opts(series, preferred_order=None):
         vals = head + tail
     return ["All"] + vals
 
-risk_order_pref   = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-status_opts_dyn   = _sorted_opts(df["status"])         if "status"     in df.columns else ["All"]
-vt_opts_dyn       = _sorted_opts(df["vt_verdict"])     if "vt_verdict" in df.columns else ["All"]
-risk_opts_dyn     = _sorted_opts(df["risk_level"], preferred_order=risk_order_pref) \
-                    if "risk_level" in df.columns else ["All"] + risk_order_pref
+risk_order_pref = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
+status_opts_dyn = ["All"] + ANALYST_STATUS_OPTIONS
+
+vt_order_pref = ["Malicious", "Suspicious", "Clean", "Unknown"]
+
+if "vt_verdict" in df.columns:
+    df["vt_verdict"] = df["vt_verdict"].apply(normalize_vt_verdict)
+else:
+    df["vt_verdict"] = "Unknown"
+
+vt_opts_dyn = ["All"] + vt_order_pref
+
+risk_opts_dyn = _sorted_opts(df["risk_level"], preferred_order=risk_order_pref) \
+                if "risk_level" in df.columns else ["All"] + risk_order_pref
 # ── Remaining sidebar filter widgets ──
 with st.sidebar:
     search_q  = st.text_input("Search (ID / IP / technique / file)", placeholder="Search…", label_visibility="visible")
@@ -1074,7 +1231,10 @@ if sel_risk != "All":
 if sel_status != "All":
     dff = dff[dff["status"].str.strip().str.upper() == sel_status.strip().upper()]
 if sel_vt != "All":
-    dff = dff[dff["vt_verdict"].str.strip().str.upper() == sel_vt.strip().upper()]
+    dff = dff[
+        dff["vt_verdict"].apply(normalize_vt_verdict).str.upper()
+        == normalize_vt_verdict(sel_vt).upper()
+    ]
 if search_q.strip():
     q = search_q.strip().lower()
     mask = (
@@ -1177,15 +1337,48 @@ else:
         elif val == "LOW":
             return "color: #33cc33"
         return ""
+    def color_status(val):
+        val = str(val).strip().upper()
 
-    styled_df = queue_df.style.map(color_risk, subset=["risk_level"])
+        if val == "ESCALATED":
+            return "color: #ff4d4d; font-weight: bold"
+        elif val == "REVIEWING":
+            return "color: #bc8cff; font-weight: bold"
+        elif val == "NEW":
+            return "color: #c9d1d9; font-weight: bold"
+        elif val == "CLOSED - TRUE POSITIVE":
+            return "color: #33cc33; font-weight: bold"
+        elif val in ["CLOSED - FALSE POSITIVE", "CLOSED - BENIGN"]:
+            return "color: #8b949e; font-weight: bold"
+
+        return ""
+
+    styled_df = (
+    queue_df.style
+    .map(color_risk, subset=["risk_level"])
+    .map(color_status, subset=["status"])
+    )
 
     st.dataframe(
-        styled_df,
-        use_container_width=True,
-        hide_index=True,
-        height=360,
-    )
+    styled_df,
+    use_container_width=True,
+    hide_index=True,
+    height=360,
+    column_config={
+        "status": st.column_config.TextColumn(
+            "analyst_status",
+            width="medium",
+        ),
+        "mitre_technique": st.column_config.TextColumn(
+            "mitre_technique",
+            width="large",
+        ),
+        "source_file": st.column_config.TextColumn(
+            "source_file",
+            width="medium",
+        ),
+    },
+)
 
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 
@@ -1208,11 +1401,21 @@ for i, row in dff.iterrows():
         default_idx = incident_ids.index(row["incident_id"])
         break
 
+def format_incident_option(incident_id):
+    row = dff[dff["incident_id"] == incident_id].iloc[0]
+
+    risk = safe_str(row.get("risk_level"))
+    status = safe_str(row.get("status"))
+    mitre = safe_str(row.get("mitre_technique"))
+
+    return f"{incident_id}  ·  {status}  ·  {risk}  ·  {mitre}"
+
+
 selected_id = st.selectbox(
     "Select Incident",
     options=incident_ids,
     index=default_idx,
-    format_func=lambda x: f"{x}  ·  {dff.loc[dff['incident_id']==x,'risk_level'].values[0]}  ·  {dff.loc[dff['incident_id']==x,'mitre_technique'].values[0][:40]}",
+    format_func=format_incident_option,
     label_visibility="collapsed",
 )
 
@@ -1289,7 +1492,52 @@ with col_right:
     </div>
     """, unsafe_allow_html=True)
 
+# ─────────────────────────────────────────────
+# ANALYST STATUS UPDATE
+# ─────────────────────────────────────────────
+st.markdown('<div class="section-hdr">Analyst Status Update</div>', unsafe_allow_html=True)
 
+analyst_status_options = ANALYST_STATUS_OPTIONS
+
+current_status = safe_str(sel_row.get("status", "NEW")).upper()
+
+if current_status not in analyst_status_options:
+    current_status = "NEW"
+
+status_col1, status_col2 = st.columns([2, 1])
+
+with status_col1:
+    selected_status_update = st.selectbox(
+        "Set Analyst Status",
+        options=analyst_status_options,
+        index=analyst_status_options.index(current_status),
+        label_visibility="visible",
+    )
+
+with status_col2:
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.button("💾 Save Status", use_container_width=True):
+        if using_demo:
+            st.warning("Status updates are disabled while viewing demo data. Run triage or load a real alerts_summary.csv first.")
+        else:
+            success, message = update_incident_status_in_csv(
+                incident_id=safe_str(sel_row.get("incident_id")),
+                new_status=selected_status_update,
+            )
+
+            if success:
+                st.success(message)
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(message)
+
+st.caption(
+    "Status is analyst-controlled. AI generates risk and recommendations, but the analyst sets the operational review state."
+)
+
+st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 # ─────────────────────────────────────────────
 # TRIAGE DECISION SUPPORT
 # ─────────────────────────────────────────────
@@ -1419,26 +1667,49 @@ with st.expander("📊  Analytics Overview", expanded=False):
     if df.empty:
         st.info("No data loaded.")
     else:
+        import altair as alt
+
+        def count_axis_values(series) -> list[int]:
+            """
+            Build exact whole-number axis ticks so Altair does not display
+            rounded duplicate values like 0, 1, 1, 2, 2.
+            """
+            max_count = int(series.max()) if len(series) and pd.notna(series.max()) else 0
+            return list(range(0, max_count + 1))
+
         ac1, ac2 = st.columns(2)
 
         # Risk distribution
         with ac1:
             st.markdown("**Risk Distribution**")
+
+            risk_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+
             risk_counts = dff["risk_level"].value_counts().reindex(
-                ["CRITICAL", "HIGH", "MEDIUM", "LOW"], fill_value=0
+                risk_order, fill_value=0
             )
+
             risk_df = risk_counts.reset_index()
             risk_df.columns = ["Risk Level", "Count"]
 
-            import altair as alt
-
             chart = alt.Chart(risk_df).mark_bar().encode(
-                x=alt.X("Count:Q", title=""),
-                y=alt.Y("Risk Level:N", sort=["CRITICAL", "HIGH", "MEDIUM", "LOW"], title=""),
+                x=alt.X(
+                    "Count:Q",
+                    title="",
+                    axis=alt.Axis(
+                        values=count_axis_values(risk_df["Count"]),
+                        format="d",
+                    ),
+                ),
+                y=alt.Y(
+                    "Risk Level:N",
+                    sort=risk_order,
+                    title="",
+                ),
                 color=alt.Color(
                     "Risk Level:N",
                     scale=alt.Scale(
-                        domain=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                        domain=risk_order,
                         range=["#f85149", "#f0883e", "#d29922", "#3fb950"],
                     ),
                     legend=None,
@@ -1453,23 +1724,40 @@ with st.expander("📊  Analytics Overview", expanded=False):
 
             st.altair_chart(chart, use_container_width=True)
 
-        # VT verdict
+        # VT verdict distribution
         with ac2:
             st.markdown("**VT Verdict Distribution**")
-            vt_counts = dff["vt_verdict"].value_counts().reset_index()
-            vt_counts.columns = ["Verdict", "Count"]
+
+            vt_order = ["Malicious", "Suspicious", "Clean", "Unknown"]
+
+            vt_counts = dff["vt_verdict"].apply(normalize_vt_verdict).value_counts().reindex(
+                vt_order, fill_value=0
+            )
+
+            vt_df = vt_counts.reset_index()
+            vt_df.columns = ["Verdict", "Count"]
 
             color_map = {
                 "Malicious": "#f85149",
                 "Suspicious": "#f0883e",
                 "Clean": "#3fb950",
                 "Unknown": "#7d8590",
-                "Low Reputation": "#f0883e",
             }
 
-            chart2 = alt.Chart(vt_counts).mark_bar().encode(
-                x=alt.X("Count:Q", title=""),
-                y=alt.Y("Verdict:N", title=""),
+            chart2 = alt.Chart(vt_df).mark_bar().encode(
+                x=alt.X(
+                    "Count:Q",
+                    title="",
+                    axis=alt.Axis(
+                        values=count_axis_values(vt_df["Count"]),
+                        format="d",
+                    ),
+                ),
+                y=alt.Y(
+                    "Verdict:N",
+                    sort=vt_order,
+                    title="",
+                ),
                 color=alt.Color(
                     "Verdict:N",
                     scale=alt.Scale(
@@ -1488,16 +1776,83 @@ with st.expander("📊  Analytics Overview", expanded=False):
 
             st.altair_chart(chart2, use_container_width=True)
 
+        # Analyst status distribution — full width because this reflects analyst workflow state
+        st.markdown("**Analyst Status Distribution**")
+
+        status_order = [
+            "NEW",
+            "REVIEWING",
+            "ESCALATED",
+            "CLOSED - TRUE POSITIVE",
+            "CLOSED - FALSE POSITIVE",
+            "CLOSED - BENIGN",
+        ]
+
+        status_counts = dff["status"].value_counts().reindex(
+            status_order, fill_value=0
+        )
+
+        status_df = status_counts.reset_index()
+        status_df.columns = ["Status", "Count"]
+
+        status_chart = alt.Chart(status_df).mark_bar().encode(
+            x=alt.X(
+                "Count:Q",
+                title="",
+                axis=alt.Axis(
+                    values=count_axis_values(status_df["Count"]),
+                    format="d",
+                ),
+            ),
+            y=alt.Y(
+                "Status:N",
+                sort=status_order,
+                title="",
+            ),
+            color=alt.Color(
+                "Status:N",
+                scale=alt.Scale(
+                    domain=status_order,
+                    range=[
+                        "#c9d1d9",
+                        "#bc8cff",
+                        "#f85149",
+                        "#3fb950",
+                        "#7d8590",
+                        "#7d8590",
+                    ],
+                ),
+                legend=None,
+            ),
+            tooltip=["Status", "Count"],
+        ).properties(height=230).configure_view(fill="#0d1117").configure_axis(
+            labelColor="#7d8590",
+            gridColor="#21262d",
+            domainColor="#30363d",
+            tickColor="#30363d",
+            labelLimit=220,
+        )
+
+        st.altair_chart(status_chart, use_container_width=True)
+
         ac3, ac4 = st.columns(2)
 
-        # MITRE techniques
+        # Top MITRE techniques
         with ac3:
             st.markdown("**Top MITRE Techniques**")
+
             mitre_counts = dff["mitre_technique"].value_counts().head(8).reset_index()
             mitre_counts.columns = ["Technique", "Count"]
 
             chart3 = alt.Chart(mitre_counts).mark_bar(color="#bc8cff").encode(
-                x=alt.X("Count:Q", title=""),
+                x=alt.X(
+                    "Count:Q",
+                    title="",
+                    axis=alt.Axis(
+                        values=count_axis_values(mitre_counts["Count"]),
+                        format="d",
+                    ),
+                ),
                 y=alt.Y("Technique:N", sort="-x", title=""),
                 tooltip=["Technique", "Count"],
             ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
@@ -1513,11 +1868,19 @@ with st.expander("📊  Analytics Overview", expanded=False):
         # Top enriched IPs
         with ac4:
             st.markdown("**Top Enriched IPs**")
+
             ip_counts = dff["enriched_ip"].value_counts().head(8).reset_index()
             ip_counts.columns = ["IP", "Count"]
 
             chart4 = alt.Chart(ip_counts).mark_bar(color="#388bfd").encode(
-                x=alt.X("Count:Q", title=""),
+                x=alt.X(
+                    "Count:Q",
+                    title="",
+                    axis=alt.Axis(
+                        values=count_axis_values(ip_counts["Count"]),
+                        format="d",
+                    ),
+                ),
                 y=alt.Y("IP:N", sort="-x", title=""),
                 tooltip=["IP", "Count"],
             ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
@@ -1527,10 +1890,7 @@ with st.expander("📊  Analytics Overview", expanded=False):
                 tickColor="#30363d",
             )
 
-            st.altair_chart(chart4, use_container_width=True)
-
-
-# ─────────────────────────────────────────────
+            st.altair_chart(chart4, use_container_width=True)# ─────────────────────────────────────────────
 # RAW ALERT RECORD (collapsed by default)
 # ─────────────────────────────────────────────
 with st.expander("🗂  Raw Alert Record", expanded=False):
