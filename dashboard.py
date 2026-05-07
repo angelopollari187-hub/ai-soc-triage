@@ -25,6 +25,7 @@ from datetime import datetime
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
+from identityguard.identity_dashboard import render_identity_guard_tab
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -834,6 +835,48 @@ def action_items_html(text):
         for p in parts
     )
     return f'<div class="action-box">{items}</div>'
+
+IDENTITY_PIVOT_KEYWORDS = [
+    "mfa",
+    "mfa_fatigue",
+    "impossible travel",
+    "oauth",
+    "mailbox",
+    "forwarding",
+    "account takeover",
+    "suspicious sign-in",
+    "sign-in",
+    "login",
+    "new device",
+    "unmanaged device",
+    "password reset",
+    "privileged",
+    "admin",
+    "valid accounts",
+    "t1078",
+    "t1621",
+    "t1098",
+    "t1114",
+    "t1550.001",
+]
+
+def has_identity_pivot_signal(row) -> bool:
+    fields = [
+        "incident_id",
+        "mitre_technique",
+        "ai_summary",
+        "analyst_insight",
+        "recommended_action",
+        "source_file",
+        "raw",
+        "context",
+        "description",
+        "alert",
+        "message",
+    ]
+    text = " ".join(safe_str(row.get(field), "") for field in fields).lower()
+    return any(keyword in text for keyword in IDENTITY_PIVOT_KEYWORDS)
+
 def build_splunk_searches(row) -> dict:
     """
     Build suggested Splunk SPL validation searches for the selected alert.
@@ -1004,98 +1047,32 @@ with col_t1:
 
 st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 
-# ── File uploaders live in sidebar — rendered first so Streamlit registers them ──
+# ── Tabs are created early so each workflow owns its controls ──
+st.info(
+    "Workflow: Use SOC Triage for broad alert intake. "
+    "Use IdentityGuard AI when the alert involves account takeover, MFA, OAuth, mailbox, device, or privileged-access risk."
+)
+with st.expander("Data Intake Guide", expanded=False):
+    st.markdown("""
+    - **SOC Triage:** Upload general alerts, Splunk exports, single log bundles, or `alerts_summary.csv`.
+    - **IdentityGuard AI:** Upload structured identity telemetry for account-takeover review.
+    - **Production note:** SOAR could route identity alerts automatically; this prototype supports manual CSV/JSON upload.
+    """)
+
+tab_soc, tab_ig = st.tabs(["  SOC Triage  ", "  IdentityGuard AI  "])
+
+with tab_ig:
+    render_identity_guard_tab()
+
+# ── Minimal global sidebar ──
 with st.sidebar:
     st.markdown(
         "<div style='color:#388bfd;font-family:Courier New,monospace;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:12px'>⬡ SOC Console</div>",
         unsafe_allow_html=True,
     )
-
-    uploaded = st.file_uploader(
-        "Upload processed alerts_summary.csv",
-        type=["csv"],
-        label_visibility="collapsed",
-        key="processed_alert_summary_upload",
+    st.caption(
+        "Global console controls. SOC and IdentityGuard workflows now live inside their own tabs."
     )
-
-    st.markdown("---")
-
-    st.markdown(
-        "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Run New AI Triage</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        "<div style='font-family:Courier New,monospace;font-size:0.62rem;color:#7d8590;line-height:1.5;margin-bottom:8px'>Upload one .txt file for one incident/log bundle. The dashboard runs one AI triage review per uploaded file.</div>",
-        unsafe_allow_html=True,
-    )
-
-    uploaded_log = st.file_uploader(
-        "Upload single-incident log (.txt)",
-        type=["txt"],
-        key="raw_log_upload",
-    )
-
-    run_triage_button = st.button("🚀 Run AI Triage", use_container_width=True)
-
-    if run_triage_button:
-        if uploaded_log is None:
-            st.error("Upload a .txt log before running triage.")
-        else:
-            saved_log_path = save_uploaded_log(uploaded_log)
-
-            with st.spinner("Running AI triage on uploaded log..."):
-                success, message = run_triage_from_dashboard(saved_log_path)
-
-            if success:
-                st.success("Triage complete. Dashboard data updated.")
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.error("Triage failed.")
-                st.code(message)
-
-    st.markdown("---")
-
-    st.markdown(
-        "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Splunk Alert Export</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        "<div style='font-family:Courier New,monospace;font-size:0.62rem;color:#7d8590;line-height:1.5;margin-bottom:8px'>Upload a Splunk alert export CSV. Each row is automatically converted into a triage-ready incident and processed by the AI triage engine.</div>",
-        unsafe_allow_html=True,
-    )
-
-    uploaded_splunk_csv = st.file_uploader(
-        "Upload Splunk alert export (.csv)",
-        type=["csv"],
-        key="splunk_export_upload",
-    )
-
-    run_splunk_button = st.button("⚡ Run Splunk Export Triage", use_container_width=True)
-
-    if run_splunk_button:
-        if uploaded_splunk_csv is None:
-            st.error("Upload a Splunk alert export CSV before running triage.")
-        else:
-            try:
-                with st.spinner("Preparing Splunk export rows for AI triage..."):
-                    splunk_batch_dir, splunk_event_count = save_splunk_export_as_log_bundles(uploaded_splunk_csv)
-
-                with st.spinner(f"Running AI triage on {splunk_event_count} Splunk alert row(s)..."):
-                    success, message = run_batch_triage_from_dashboard(splunk_batch_dir)
-
-                if success:
-                    st.success(f"Splunk export triage complete. Processed {splunk_event_count} alert row(s).")
-                    st.cache_data.clear()
-                    st.rerun()
-                else:
-                    st.error("Splunk export triage failed.")
-                    st.code(message)
-
-            except Exception as e:
-                st.error(f"Splunk export processing failed: {e}")
 
     st.markdown("---")
 
@@ -1118,7 +1095,121 @@ with st.sidebar:
             else:
                 st.error(message)
 
-    st.markdown("---")
+# ── SOC intake controls — rendered before data loading so uploads are available ──
+with tab_soc:
+    st.markdown('<div class="section-hdr">SOC Intake</div>', unsafe_allow_html=True)
+    intake_col1, intake_col2, intake_col3 = st.columns(3)
+
+    with intake_col1:
+        st.markdown(
+            "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Processed Alerts</div>",
+            unsafe_allow_html=True,
+        )
+        uploaded = st.file_uploader(
+            "Upload processed alerts_summary.csv",
+            type=["csv"],
+            key="soc_processed_alerts_upload",
+        )
+
+        alerts_summary_template = (
+            "incident_id,timestamp,status,source_file,risk_level,mitre_technique,"
+            "confidence,false_positive_likelihood,enriched_ip,country,city,asn_org,"
+            "hosting,proxy,vt_status,vt_malicious,vt_suspicious,vt_harmless,"
+            "vt_undetected,vt_reputation,vt_verdict,analyst_insight,recommended_action\n"
+            "INC-001,2025-07-12 02:14:33,NEW,endpoint_edr.csv,CRITICAL,"
+            "T1059 - Command and Scripting Interpreter,92,8,185.220.101.47,"
+            "Germany,Frankfurt,AS24940 Hetzner,True,False,completed,67,12,3,10,"
+            "-85,Malicious,"
+            "\"Brief analyst assessment goes here.\","
+            "\"Recommended analyst action goes here.\"\n"
+        )
+
+        st.download_button(
+            "Download alerts_summary.csv Template",
+            data=alerts_summary_template.encode("utf-8"),
+            file_name="alerts_summary_template.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="soc_alerts_summary_template",
+        )
+
+        st.caption(
+            "Use this template for processed SOC dashboard alerts. "
+            "For identity-event telemetry, use the IdentityGuard CSV/JSON templates."
+        )
+
+    with intake_col2:
+        st.markdown(
+            "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Single Incident</div>",
+            unsafe_allow_html=True,
+        )
+        uploaded_log = st.file_uploader(
+            "Upload single-incident log (.txt)",
+            type=["txt"],
+            key="soc_raw_log_upload",
+        )
+        run_triage_button = st.button(
+            "🚀 Run AI Triage",
+            use_container_width=True,
+            key="soc_run_ai_triage",
+        )
+
+        if run_triage_button:
+            if uploaded_log is None:
+                st.error("Upload a .txt log before running triage.")
+            else:
+                saved_log_path = save_uploaded_log(uploaded_log)
+
+                with st.spinner("Running AI triage on uploaded log..."):
+                    success, message = run_triage_from_dashboard(saved_log_path)
+
+                if success:
+                    st.success("Triage complete. Dashboard data updated.")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("Triage failed.")
+                    st.code(message)
+
+    with intake_col3:
+        st.markdown(
+            "<div style='font-family:Courier New,monospace;font-size:0.68rem;color:#7d8590;letter-spacing:0.08em;text-transform:uppercase'>Splunk Alert Export</div>",
+            unsafe_allow_html=True,
+        )
+        uploaded_splunk_csv = st.file_uploader(
+            "Upload Splunk alert export (.csv)",
+            type=["csv"],
+            key="soc_splunk_export_upload",
+        )
+        run_splunk_button = st.button(
+            "⚡ Run Splunk Export Triage",
+            use_container_width=True,
+            key="soc_run_splunk_triage",
+        )
+
+        if run_splunk_button:
+            if uploaded_splunk_csv is None:
+                st.error("Upload a Splunk alert export CSV before running triage.")
+            else:
+                try:
+                    with st.spinner("Preparing Splunk export rows for AI triage..."):
+                        splunk_batch_dir, splunk_event_count = save_splunk_export_as_log_bundles(uploaded_splunk_csv)
+
+                    with st.spinner(f"Running AI triage on {splunk_event_count} Splunk alert row(s)..."):
+                        success, message = run_batch_triage_from_dashboard(splunk_batch_dir)
+
+                    if success:
+                        st.success(f"Splunk export triage complete. Processed {splunk_event_count} alert row(s).")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error("Splunk export triage failed.")
+                        st.code(message)
+
+                except Exception as e:
+                    st.error(f"Splunk export processing failed: {e}")
+
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 # ── Load data (must happen before filter widgets so options reflect real values) ──
 if uploaded is not None:
     df = load_csv(uploaded)
@@ -1126,10 +1217,11 @@ if uploaded is not None:
     required_dashboard_cols = {"incident_id", "risk_level", "mitre_technique"}
 
     if not required_dashboard_cols.issubset(set(df.columns)):
-        st.error(
-            "This CSV does not look like a processed AI-SOC alerts_summary.csv. "
-            "If this is a Splunk alert export, use the 'Splunk Alert Export' uploader in the sidebar instead."
-        )
+        with tab_soc:
+            st.error(
+                "This CSV does not look like a processed AI-SOC alerts_summary.csv. "
+                "If this is a Splunk alert export, use the 'Splunk Alert Export' uploader in SOC Intake instead."
+            )
         st.stop()
 
     using_demo = False
@@ -1140,7 +1232,8 @@ else:
     if default_path.exists():
         df = load_csv(default_path)
         using_demo = False
-        st.info(f"Loaded from {default_path}", icon="📂")
+        with tab_soc:
+            st.info(f"Loaded from {default_path}", icon="📂")
 
     else:
         df = pd.DataFrame(DEMO_DATA)
@@ -1163,11 +1256,12 @@ else:
         df["status"] = demo_status_showcase[:len(df)]
 
         using_demo = True
-        st.info(
-            "No real alerts_summary.csv found — showing built-in demo data for preview only. "
-            "Upload a CSV or run AI triage on a .txt log to generate real dashboard data.",
-            icon="ℹ️",
-        )
+        with tab_soc:
+            st.info(
+                "No real alerts_summary.csv found — showing built-in demo data for preview only. "
+                "Upload a CSV or run AI triage on a .txt log to generate real dashboard data.",
+                icon="ℹ️",
+            )
 # ── Build dynamic filter option lists from the loaded data ──
 def _sorted_opts(series, preferred_order=None):
     """Return ['All'] + unique non-blank values, with preferred_order first if supplied."""
@@ -1194,9 +1288,9 @@ vt_opts_dyn = ["All"] + vt_order_pref
 
 risk_opts_dyn = _sorted_opts(df["risk_level"], preferred_order=risk_order_pref) \
                 if "risk_level" in df.columns else ["All"] + risk_order_pref
-# ── Remaining sidebar filter widgets ──
-with st.sidebar:
-    search_q  = st.text_input("Search (ID / IP / technique / file)", placeholder="Search…", label_visibility="visible")
+# ── SOC filter widgets ──
+with tab_soc:
+    st.markdown('<div class="section-hdr">SOC Filters</div>', unsafe_allow_html=True)
     
     def format_risk_label(risk):
         colors = {
@@ -1210,16 +1304,32 @@ with st.sidebar:
 
     formatted_risk_opts = [format_risk_label(r) for r in risk_opts_dyn]
 
-    selected_risk_label = st.selectbox("Risk Level", formatted_risk_opts)
+    f1, f2, f3, f4, f5 = st.columns([2, 1, 1, 1, 1])
+    with f1:
+        search_q = st.text_input(
+            "Search",
+            placeholder="ID / IP / technique / file",
+            key="soc_search",
+            label_visibility="visible",
+        )
+    with f2:
+        selected_risk_label = st.selectbox(
+            "SOC Risk Level",
+            formatted_risk_opts,
+            key="soc_risk_filter",
+        )
 
     # Map back to original value
     sel_risk = risk_opts_dyn[formatted_risk_opts.index(selected_risk_label)]
-    sel_status = st.selectbox("Status", status_opts_dyn)
-    sel_vt    = st.selectbox("VT Verdict", vt_opts_dyn)
-    highcrit_only = st.checkbox("High / Critical only")
-    st.markdown("---")
-    st.markdown("<div style='font-family:Courier New,monospace;font-size:0.65rem;color:#7d8590;letter-spacing:0.08em'>UPLOAD YOUR CSV OR USE DEMO DATA BELOW</div>", 
-                unsafe_allow_html=True)
+    with f3:
+        sel_status = st.selectbox("SOC Status", status_opts_dyn, key="soc_status_filter")
+    with f4:
+        sel_vt = st.selectbox("SOC VT Verdict", vt_opts_dyn, key="soc_vt_filter")
+    with f5:
+        st.markdown("<br>", unsafe_allow_html=True)
+        highcrit_only = st.checkbox("High / Critical only", key="soc_highcrit_only")
+
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
 
 # ── Apply filters ──
 dff = df.copy()
@@ -1250,670 +1360,681 @@ dff["_risk_ord"] = dff["risk_level"].str.strip().str.upper().map(RISK_ORDER).fil
 dff = dff.sort_values(["_risk_ord", "timestamp"], ascending=[True, True])
 dff = dff.drop(columns=["_risk_ord"])
 
-
-# ─────────────────────────────────────────────
-# KPI STRIP
-# ─────────────────────────────────────────────
-total_alerts   = len(dff)
-highcrit_count = len(dff[dff["risk_level"].str.strip().str.upper().isin(["CRITICAL", "HIGH"])])
-avg_fp         = dff["false_positive_likelihood"].mean() if not dff.empty else 0
-escalate_count = len(dff[
-    dff["risk_level"].str.upper().isin(["CRITICAL", "HIGH"]) &
-    dff["vt_verdict"].str.strip().str.lower().isin(["malicious", "suspicious", "low reputation"])
-])
-unique_ips = dff["enriched_ip"].nunique()
-
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("Total Alerts",         total_alerts)
-k2.metric("High / Critical",      highcrit_count)
-k3.metric("Avg FP Likelihood",    f"{avg_fp:.0f}%")
-k4.metric("Needs Escalation",     escalate_count)
-k5.metric("Unique IPs",           unique_ips)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-st.markdown(
-    """
-    <div class="detail-panel">
-      <div class="panel-title">Export Current View</div>
-      <div style="font-size:0.78rem;color:#7d8590;margin-bottom:10px">
-        Download the currently filtered dashboard results as a CSV for reporting, ticket attachment, or analyst handoff.
-      </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-export_csv = dff.to_csv(index=False).encode("utf-8")
-export_filename = f"ai_soc_triage_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
-st.download_button(
-    label="⬇️ Export Current Dashboard View",
-    data=export_csv,
-    file_name=export_filename,
-    mime="text/csv",
-    use_container_width=True,
-)
-
-st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# ALERT QUEUE
-# ─────────────────────────────────────────────
-st.markdown(
-    f'<div class="section-hdr">Alert Queue <span>{len(dff)} alerts</span></div>',
-    unsafe_allow_html=True
-)
-
-if dff.empty:
-    st.warning("No alerts match the current filters.")
-else:
-    queue_cols = [
-        "incident_id",
-        "timestamp",
-        "status",
-        "risk_level",
-        "mitre_technique",
-        "confidence",
-        "false_positive_likelihood",
-        "enriched_ip",
-        "vt_verdict",
-        "vt_malicious",
-        "source_file",
-    ]
-
-    available_cols = [col for col in queue_cols if col in dff.columns]
-
-    queue_df = dff[available_cols].copy()
-
-    def color_risk(val):
-        if val == "CRITICAL":
-            return "color: #ff4d4d; font-weight: bold"
-        elif val == "HIGH":
-            return "color: #ff9933; font-weight: bold"
-        elif val == "MEDIUM":
-            return "color: #ffd633"
-        elif val == "LOW":
-            return "color: #33cc33"
-        return ""
-    def color_status(val):
-        val = str(val).strip().upper()
-
-        if val == "ESCALATED":
-            return "color: #ff4d4d; font-weight: bold"
-        elif val == "REVIEWING":
-            return "color: #bc8cff; font-weight: bold"
-        elif val == "NEW":
-            return "color: #c9d1d9; font-weight: bold"
-        elif val == "CLOSED - TRUE POSITIVE":
-            return "color: #33cc33; font-weight: bold"
-        elif val in ["CLOSED - FALSE POSITIVE", "CLOSED - BENIGN"]:
-            return "color: #8b949e; font-weight: bold"
-
-        return ""
-
-    styled_df = (
-    queue_df.style
-    .map(color_risk, subset=["risk_level"])
-    .map(color_status, subset=["status"])
-    )
-
-    st.dataframe(
-    styled_df,
-    use_container_width=True,
-    hide_index=True,
-    height=360,
-    column_config={
-        "status": st.column_config.TextColumn(
-            "analyst_status",
-            width="medium",
-        ),
-        "mitre_technique": st.column_config.TextColumn(
-            "mitre_technique",
-            width="large",
-        ),
-        "source_file": st.column_config.TextColumn(
-            "source_file",
-            width="medium",
-        ),
-    },
-)
-
-st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# INCIDENT SELECTOR
-# ─────────────────────────────────────────────
-st.markdown('<div class="section-hdr">Incident Detail</div>', unsafe_allow_html=True)
-
-if dff.empty:
-    st.info("No alerts to display. Adjust filters.")
-    st.stop()
-
-incident_ids = dff["incident_id"].tolist()
-
-# Pre-select first CRITICAL/HIGH if available
-default_idx = 0
-for i, row in dff.iterrows():
-    if str(row.get("risk_level", "")).strip().upper() in ("CRITICAL", "HIGH"):
-        default_idx = incident_ids.index(row["incident_id"])
-        break
-
-def format_incident_option(incident_id):
-    row = dff[dff["incident_id"] == incident_id].iloc[0]
-
-    risk = safe_str(row.get("risk_level"))
-    status = safe_str(row.get("status"))
-    mitre = safe_str(row.get("mitre_technique"))
-
-    return f"{incident_id}  ·  {status}  ·  {risk}  ·  {mitre}"
-
-
-selected_id = st.selectbox(
-    "Select Incident",
-    options=incident_ids,
-    index=default_idx,
-    format_func=format_incident_option,
-    label_visibility="collapsed",
-)
-
-sel_row = dff[dff["incident_id"] == selected_id].iloc[0].to_dict()
-
-
-# ─────────────────────────────────────────────
-# INCIDENT OVERVIEW + THREAT INTEL (2-col)
-# ─────────────────────────────────────────────
-col_left, col_right = st.columns(2)
-
-with col_left:
-    fp_val    = safe_float(sel_row.get("false_positive_likelihood", 0))
-    fp_color  = "#3fb950" if fp_val >= 60 else "#d29922" if fp_val >= 35 else "#f85149"
-    risk_val  = safe_str(sel_row.get("risk_level"))
-    conf_val = safe_str(sel_row.get("confidence", "N/A"))
-
-    st.markdown(f"""
-    <div class="detail-panel accent">
-      <div class="panel-title">Incident Overview</div>
-      <div class="field-row"><span class="field-label">Incident ID</span><span class="field-value accent">{safe_str(sel_row.get("incident_id"))}</span></div>
-      <div class="field-row"><span class="field-label">Timestamp</span><span class="field-value">{safe_str(sel_row.get("timestamp"))}</span></div>
-      <div class="field-row"><span class="field-label">Status</span><span class="field-value">{status_badge(safe_str(sel_row.get("status")))}</span></div>
-      <div class="field-row"><span class="field-label">Risk Level</span><span class="field-value">{risk_badge(risk_val)}</span></div>
-      <div class="field-row"><span class="field-label">Source File</span><span class="field-value muted path-wrap">{safe_str(sel_row.get("source_file"))}</span></div>
-      <div class="field-row"><span class="field-label">MITRE</span><span class="field-value" style="font-size:0.7rem">{safe_str(sel_row.get("mitre_technique"))}</span></div>
-      <div class="field-row"><span class="field-label">Confidence</span><span class="field-value">{conf_val}</span></div>
-      <div class="field-row">
-        <span class="field-label">FP Likelihood</span>
-        <span class="field-value" style="color:{fp_color}">{fp_val:.0f}%</span>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col_right:
-    ip      = safe_str(sel_row.get("enriched_ip"))
-    country = safe_str(sel_row.get("country"))
-    city    = safe_str(sel_row.get("city"))
-    asn     = safe_str(sel_row.get("asn_org"))
-    hosting = sel_row.get("hosting", False)
-    proxy   = sel_row.get("proxy", False)
-    vt_rep  = safe_int(sel_row.get("vt_reputation", 0))
-    vt_mal  = safe_int(sel_row.get("vt_malicious", 0))
-    vt_sus  = safe_int(sel_row.get("vt_suspicious", 0))
-    vt_har  = safe_int(sel_row.get("vt_harmless", 0))
-    vt_undet= safe_int(sel_row.get("vt_undetected", 0))
-    vt_verd = safe_str(sel_row.get("vt_verdict"))
-
-    ip_is_internal = is_internal_ip(ip)
-    ip_color   = "#bc8cff" if ip_is_internal else "#388bfd"
-    ip_display = f"Internal / {ip}" if ip_is_internal else ip
-    rep_color  = "#f85149" if vt_rep < 0 else "#3fb950"
-    host_color = "#f0883e" if hosting else "#3fb950"
-    proxy_color= "#f0883e" if proxy else "#3fb950"
-    mal_color  = "#f85149" if vt_mal > 0 else "#7d8590"
-    sus_color  = "#f0883e" if vt_sus > 0 else "#7d8590"
-
-    st.markdown(f"""
-    <div class="detail-panel">
-      <div class="panel-title">Threat Intelligence</div>
-      <div class="field-row"><span class="field-label">Enriched IP</span><span class="field-value" style="color:{ip_color}">{ip_display}</span></div>
-      <div class="field-row"><span class="field-label">Country</span><span class="field-value">{country}</span></div>
-      <div class="field-row"><span class="field-label">City</span><span class="field-value">{city}</span></div>
-      <div class="field-row"><span class="field-label">ASN / Org</span><span class="field-value muted">{asn}</span></div>
-      <div class="field-row"><span class="field-label">Hosting</span><span class="field-value" style="color:{host_color}">{'Yes' if hosting else 'No'}</span></div>
-      <div class="field-row"><span class="field-label">Proxy</span><span class="field-value" style="color:{proxy_color}">{'Yes' if proxy else 'No'}</span></div>
-      <div style="border-top:1px solid #21262d;margin:8px 0"></div>
-      <div class="field-row"><span class="field-label">VT Verdict</span><span class="field-value">{vt_badge(vt_verd)}</span></div>
-      <div class="field-row"><span class="field-label">VT Reputation</span><span class="field-value" style="color:{rep_color}">{vt_rep:+d}</span></div>
-      <div class="field-row"><span class="field-label">VT Malicious</span><span class="field-value" style="color:{mal_color}">{vt_mal}</span></div>
-      <div class="field-row"><span class="field-label">VT Suspicious</span><span class="field-value" style="color:{sus_color}">{vt_sus}</span></div>
-      <div class="field-row"><span class="field-label">VT Harmless</span><span class="field-value green">{vt_har}</span></div>
-      <div class="field-row"><span class="field-label">VT Undetected</span><span class="field-value muted">{vt_undet}</span></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-# ANALYST STATUS UPDATE
-# ─────────────────────────────────────────────
-st.markdown('<div class="section-hdr">Analyst Status Update</div>', unsafe_allow_html=True)
-
-analyst_status_options = ANALYST_STATUS_OPTIONS
-
-current_status = safe_str(sel_row.get("status", "NEW")).upper()
-
-if current_status not in analyst_status_options:
-    current_status = "NEW"
-
-status_col1, status_col2 = st.columns([2, 1])
-
-with status_col1:
-    selected_status_update = st.selectbox(
-        "Set Analyst Status",
-        options=analyst_status_options,
-        index=analyst_status_options.index(current_status),
-        label_visibility="visible",
-    )
-
-with status_col2:
+with tab_soc:
+    # ─────────────────────────────────────────────
+    # KPI STRIP
+    # ─────────────────────────────────────────────
+    total_alerts   = len(dff)
+    highcrit_count = len(dff[dff["risk_level"].str.strip().str.upper().isin(["CRITICAL", "HIGH"])])
+    avg_fp         = dff["false_positive_likelihood"].mean() if not dff.empty else 0
+    escalate_count = len(dff[
+        dff["risk_level"].str.upper().isin(["CRITICAL", "HIGH"]) &
+        dff["vt_verdict"].str.strip().str.lower().isin(["malicious", "suspicious", "low reputation"])
+    ])
+    unique_ips = dff["enriched_ip"].nunique()
+    
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Total Alerts",         total_alerts)
+    k2.metric("High / Critical",      highcrit_count)
+    k3.metric("Avg FP Likelihood",    f"{avg_fp:.0f}%")
+    k4.metric("Needs Escalation",     escalate_count)
+    k5.metric("Unique IPs",           unique_ips)
+    
     st.markdown("<br>", unsafe_allow_html=True)
-
-    if st.button("💾 Save Status", use_container_width=True):
-        if using_demo:
-            st.warning("Status updates are disabled while viewing demo data. Run triage or load a real alerts_summary.csv first.")
-        else:
-            success, message = update_incident_status_in_csv(
-                incident_id=safe_str(sel_row.get("incident_id")),
-                new_status=selected_status_update,
-            )
-
-            if success:
-                st.success(message)
-                st.cache_data.clear()
-                st.rerun()
-            else:
-                st.error(message)
-
-st.caption(
-    "Status is analyst-controlled. AI generates risk and recommendations, but the analyst sets the operational review state."
-)
-
-st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
-# ─────────────────────────────────────────────
-# TRIAGE DECISION SUPPORT
-# ─────────────────────────────────────────────
-st.markdown('<div class="section-hdr">Triage Decision Support</div>', unsafe_allow_html=True)
-dec_cls, dec_text = triage_decision(sel_row)
-st.markdown(f'<div class="{dec_cls}">{dec_text}</div>', unsafe_allow_html=True)
-st.markdown("<br>", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# AI ANALYST INSIGHT
-# ─────────────────────────────────────────────
-insight = safe_str(sel_row.get("analyst_insight", ""), "No analyst insight available.")
-
-st.markdown(f"""
-<div class="detail-panel accent">
-  <div class="panel-title">AI Analyst Insight</div>
-  <div class="insight-box">{insight}</div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# RECOMMENDED ACTION
-# ─────────────────────────────────────────────
-rec = safe_str(sel_row.get("recommended_action", ""), "")
-
-st.markdown(f"""
-<div class="detail-panel green">
-  <div class="panel-title">Recommended Action</div>
-  {action_items_html(rec)}
-</div>
-""", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# ANALYST HANDOFF SUMMARY
-# ─────────────────────────────────────────────
-
-# Pull selected alert values for the handoff summary.
-handoff_incident_id = safe_str(sel_row.get("incident_id"))
-handoff_timestamp = safe_str(sel_row.get("timestamp"))
-handoff_status = safe_str(sel_row.get("status"))
-handoff_risk = safe_str(sel_row.get("risk_level"))
-handoff_mitre = safe_str(sel_row.get("mitre_technique"))
-handoff_confidence = safe_str(sel_row.get("confidence"))
-handoff_fp = safe_str(sel_row.get("false_positive_likelihood"))
-handoff_source = safe_str(sel_row.get("source_file"))
-
-handoff_ip = safe_str(sel_row.get("enriched_ip"))
-handoff_country = safe_str(sel_row.get("country"))
-handoff_city = safe_str(sel_row.get("city"))
-handoff_asn = safe_str(sel_row.get("asn_org"))
-handoff_hosting = "Yes" if sel_row.get("hosting", False) else "No"
-handoff_proxy = "Yes" if sel_row.get("proxy", False) else "No"
-
-handoff_vt_verdict = safe_str(sel_row.get("vt_verdict"))
-handoff_vt_malicious = safe_str(sel_row.get("vt_malicious"))
-handoff_vt_suspicious = safe_str(sel_row.get("vt_suspicious"))
-
-handoff_summary = f"""SOC Analyst Handoff Summary
-
-Incident: {handoff_incident_id} | Risk: {handoff_risk} | MITRE: {handoff_mitre}
-Time: {handoff_timestamp} | Status: {handoff_status} | Source: {handoff_source}
-Confidence: {handoff_confidence} | False Positive Likelihood: {handoff_fp}%
-
-Key Context:
-- Indicator: {handoff_ip}
-- Location/ASN: {handoff_city}, {handoff_country} | {handoff_asn}
-- VT Verdict: {handoff_vt_verdict} | Malicious: {handoff_vt_malicious} | Suspicious: {handoff_vt_suspicious}
-- Hosting: {handoff_hosting} | Proxy: {handoff_proxy}
-
-Assessment:
-{insight}
-
-Recommended Action:
-{rec}
-
-Analyst Follow-Up:
-1. Validate in SIEM/EDR using the indicator, host/user, and timeframe.
-2. Confirm whether the activity is expected or business-approved.
-3. Escalate if telemetry confirms malicious or unauthorized behavior.
-"""
-
-with st.expander("📋 Analyst Handoff Summary", expanded=False):
-    st.text_area(
-        "Copy-ready handoff summary",
-        value=handoff_summary,
-        height=300,
+    
+    st.markdown(
+        """
+        <div class="detail-panel">
+          <div class="panel-title">Export Current View</div>
+          <div style="font-size:0.78rem;color:#7d8590;margin-bottom:10px">
+            Download the currently filtered dashboard results as a CSV for reporting, ticket attachment, or analyst handoff.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    export_csv = dff.to_csv(index=False).encode("utf-8")
+    export_filename = f"ai_soc_triage_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    
+    st.download_button(
+        label="⬇️ Export Current Dashboard View",
+        data=export_csv,
+        file_name=export_filename,
+        mime="text/csv",
+        use_container_width=True,
+    )
+    
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
+    
+    
+    # ─────────────────────────────────────────────
+    # ALERT QUEUE
+    # ─────────────────────────────────────────────
+    st.markdown(
+        f'<div class="section-hdr">Alert Queue <span>{len(dff)} alerts</span></div>',
+        unsafe_allow_html=True
+    )
+    
+    if dff.empty:
+        st.warning("No alerts match the current filters.")
+    else:
+        queue_cols = [
+            "incident_id",
+            "timestamp",
+            "status",
+            "risk_level",
+            "mitre_technique",
+            "confidence",
+            "false_positive_likelihood",
+            "enriched_ip",
+            "vt_verdict",
+            "vt_malicious",
+            "source_file",
+        ]
+    
+        available_cols = [col for col in queue_cols if col in dff.columns]
+    
+        queue_df = dff[available_cols].copy()
+    
+        def color_risk(val):
+            if val == "CRITICAL":
+                return "color: #ff4d4d; font-weight: bold"
+            elif val == "HIGH":
+                return "color: #ff9933; font-weight: bold"
+            elif val == "MEDIUM":
+                return "color: #ffd633"
+            elif val == "LOW":
+                return "color: #33cc33"
+            return ""
+        def color_status(val):
+            val = str(val).strip().upper()
+    
+            if val == "ESCALATED":
+                return "color: #ff4d4d; font-weight: bold"
+            elif val == "REVIEWING":
+                return "color: #bc8cff; font-weight: bold"
+            elif val == "NEW":
+                return "color: #c9d1d9; font-weight: bold"
+            elif val == "CLOSED - TRUE POSITIVE":
+                return "color: #33cc33; font-weight: bold"
+            elif val in ["CLOSED - FALSE POSITIVE", "CLOSED - BENIGN"]:
+                return "color: #8b949e; font-weight: bold"
+    
+            return ""
+    
+        styled_df = (
+        queue_df.style
+        .map(color_risk, subset=["risk_level"])
+        .map(color_status, subset=["status"])
+        )
+    
+        st.dataframe(
+        styled_df,
+        use_container_width=True,
+        hide_index=True,
+        height=360,
+        column_config={
+            "status": st.column_config.TextColumn(
+                "analyst_status",
+                width="medium",
+            ),
+            "mitre_technique": st.column_config.TextColumn(
+                "mitre_technique",
+                width="large",
+            ),
+            "source_file": st.column_config.TextColumn(
+                "source_file",
+                width="medium",
+            ),
+        },
+    )
+    
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
+    
+    
+    # ─────────────────────────────────────────────
+    # INCIDENT SELECTOR
+    # ─────────────────────────────────────────────
+    st.markdown('<div class="section-hdr">Incident Detail</div>', unsafe_allow_html=True)
+    
+    if dff.empty:
+        st.info("No alerts to display. Adjust filters.")
+        st.stop()
+    
+    incident_ids = dff["incident_id"].tolist()
+    
+    # Pre-select first CRITICAL/HIGH if available
+    default_idx = 0
+    for i, row in dff.iterrows():
+        if str(row.get("risk_level", "")).strip().upper() in ("CRITICAL", "HIGH"):
+            default_idx = incident_ids.index(row["incident_id"])
+            break
+    
+    def format_incident_option(incident_id):
+        row = dff[dff["incident_id"] == incident_id].iloc[0]
+    
+        risk = safe_str(row.get("risk_level"))
+        status = safe_str(row.get("status"))
+        mitre = safe_str(row.get("mitre_technique"))
+    
+        return f"{incident_id}  ·  {status}  ·  {risk}  ·  {mitre}"
+    
+    
+    selected_id = st.selectbox(
+        "Select Incident",
+        options=incident_ids,
+        index=default_idx,
+        format_func=format_incident_option,
         label_visibility="collapsed",
     )
-
+    
+    sel_row = dff[dff["incident_id"] == selected_id].iloc[0].to_dict()
+    
+    
+    # ─────────────────────────────────────────────
+    # INCIDENT OVERVIEW + THREAT INTEL (2-col)
+    # ─────────────────────────────────────────────
+    col_left, col_right = st.columns(2)
+    
+    with col_left:
+        fp_val    = safe_float(sel_row.get("false_positive_likelihood", 0))
+        fp_color  = "#3fb950" if fp_val >= 60 else "#d29922" if fp_val >= 35 else "#f85149"
+        risk_val  = safe_str(sel_row.get("risk_level"))
+        conf_val = safe_str(sel_row.get("confidence", "N/A"))
+    
+        st.markdown(f"""
+        <div class="detail-panel accent">
+          <div class="panel-title">Incident Overview</div>
+          <div class="field-row"><span class="field-label">Incident ID</span><span class="field-value accent">{safe_str(sel_row.get("incident_id"))}</span></div>
+          <div class="field-row"><span class="field-label">Timestamp</span><span class="field-value">{safe_str(sel_row.get("timestamp"))}</span></div>
+          <div class="field-row"><span class="field-label">Status</span><span class="field-value">{status_badge(safe_str(sel_row.get("status")))}</span></div>
+          <div class="field-row"><span class="field-label">Risk Level</span><span class="field-value">{risk_badge(risk_val)}</span></div>
+          <div class="field-row"><span class="field-label">Source File</span><span class="field-value muted path-wrap">{safe_str(sel_row.get("source_file"))}</span></div>
+          <div class="field-row"><span class="field-label">MITRE</span><span class="field-value" style="font-size:0.7rem">{safe_str(sel_row.get("mitre_technique"))}</span></div>
+          <div class="field-row"><span class="field-label">Confidence</span><span class="field-value">{conf_val}</span></div>
+          <div class="field-row">
+            <span class="field-label">FP Likelihood</span>
+            <span class="field-value" style="color:{fp_color}">{fp_val:.0f}%</span>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col_right:
+        ip      = safe_str(sel_row.get("enriched_ip"))
+        country = safe_str(sel_row.get("country"))
+        city    = safe_str(sel_row.get("city"))
+        asn     = safe_str(sel_row.get("asn_org"))
+        hosting = sel_row.get("hosting", False)
+        proxy   = sel_row.get("proxy", False)
+        vt_rep  = safe_int(sel_row.get("vt_reputation", 0))
+        vt_mal  = safe_int(sel_row.get("vt_malicious", 0))
+        vt_sus  = safe_int(sel_row.get("vt_suspicious", 0))
+        vt_har  = safe_int(sel_row.get("vt_harmless", 0))
+        vt_undet= safe_int(sel_row.get("vt_undetected", 0))
+        vt_verd = safe_str(sel_row.get("vt_verdict"))
+    
+        ip_is_internal = is_internal_ip(ip)
+        ip_color   = "#bc8cff" if ip_is_internal else "#388bfd"
+        ip_display = f"Internal / {ip}" if ip_is_internal else ip
+        rep_color  = "#f85149" if vt_rep < 0 else "#3fb950"
+        host_color = "#f0883e" if hosting else "#3fb950"
+        proxy_color= "#f0883e" if proxy else "#3fb950"
+        mal_color  = "#f85149" if vt_mal > 0 else "#7d8590"
+        sus_color  = "#f0883e" if vt_sus > 0 else "#7d8590"
+    
+        st.markdown(f"""
+        <div class="detail-panel">
+          <div class="panel-title">Threat Intelligence</div>
+          <div class="field-row"><span class="field-label">Enriched IP</span><span class="field-value" style="color:{ip_color}">{ip_display}</span></div>
+          <div class="field-row"><span class="field-label">Country</span><span class="field-value">{country}</span></div>
+          <div class="field-row"><span class="field-label">City</span><span class="field-value">{city}</span></div>
+          <div class="field-row"><span class="field-label">ASN / Org</span><span class="field-value muted">{asn}</span></div>
+          <div class="field-row"><span class="field-label">Hosting</span><span class="field-value" style="color:{host_color}">{'Yes' if hosting else 'No'}</span></div>
+          <div class="field-row"><span class="field-label">Proxy</span><span class="field-value" style="color:{proxy_color}">{'Yes' if proxy else 'No'}</span></div>
+          <div style="border-top:1px solid #21262d;margin:8px 0"></div>
+          <div class="field-row"><span class="field-label">VT Verdict</span><span class="field-value">{vt_badge(vt_verd)}</span></div>
+          <div class="field-row"><span class="field-label">VT Reputation</span><span class="field-value" style="color:{rep_color}">{vt_rep:+d}</span></div>
+          <div class="field-row"><span class="field-label">VT Malicious</span><span class="field-value" style="color:{mal_color}">{vt_mal}</span></div>
+          <div class="field-row"><span class="field-label">VT Suspicious</span><span class="field-value" style="color:{sus_color}">{vt_sus}</span></div>
+          <div class="field-row"><span class="field-label">VT Harmless</span><span class="field-value green">{vt_har}</span></div>
+          <div class="field-row"><span class="field-label">VT Undetected</span><span class="field-value muted">{vt_undet}</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # ─────────────────────────────────────────────
+    # ANALYST STATUS UPDATE
+    # ─────────────────────────────────────────────
+    st.markdown('<div class="section-hdr">Analyst Status Update</div>', unsafe_allow_html=True)
+    
+    analyst_status_options = ANALYST_STATUS_OPTIONS
+    
+    current_status = safe_str(sel_row.get("status", "NEW")).upper()
+    
+    if current_status not in analyst_status_options:
+        current_status = "NEW"
+    
+    status_col1, status_col2 = st.columns([2, 1])
+    
+    with status_col1:
+        selected_status_update = st.selectbox(
+            "Set Analyst Status",
+            options=analyst_status_options,
+            index=analyst_status_options.index(current_status),
+            label_visibility="visible",
+        )
+    
+    with status_col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+    
+        if st.button("💾 Save Status", use_container_width=True):
+            if using_demo:
+                st.warning("Status updates are disabled while viewing demo data. Run triage or load a real alerts_summary.csv first.")
+            else:
+                success, message = update_incident_status_in_csv(
+                    incident_id=safe_str(sel_row.get("incident_id")),
+                    new_status=selected_status_update,
+                )
+    
+                if success:
+                    st.success(message)
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error(message)
+    
     st.caption(
-        "Copy into Splunk notes, ServiceNow/Jira, Slack escalation, or SOC shift handoff. Validate AI guidance against raw telemetry and business context."
+        "Status is analyst-controlled. AI generates risk and recommendations, but the analyst sets the operational review state."
     )
-
-st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
-
-
-# ─────────────────────────────────────────────
-# SUGGESTED SPLUNK VALIDATION SEARCHES
-# ─────────────────────────────────────────────
-splunk_searches = build_splunk_searches(sel_row)
-
-with st.expander("🔎 Suggested Splunk Validation Searches", expanded=False):
-    st.caption(
-        "These SPL queries are validation starting points. Adjust index, sourcetype, host, user, "
-        "field names, and time range for your Splunk environment."
-    )
-
-    if not splunk_searches:
-        st.info("No strong indicators were available to generate Splunk searches.")
-    else:
-        for search_name, spl_query in splunk_searches.items():
-            st.markdown(f"**{search_name}**")
-            st.code(spl_query, language="spl")
-
-    st.caption(
-        "The helper prioritizes raw text searches first because Splunk field names vary across environments."
-    )
-
-st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
-# ─────────────────────────────────────────────
-# ANALYTICS (collapsed by default)
-# ─────────────────────────────────────────────
-with st.expander("📊  Analytics Overview", expanded=False):
-    if df.empty:
-        st.info("No data loaded.")
-    else:
-        import altair as alt
-
-        def count_axis_values(series) -> list[int]:
-            """
-            Build exact whole-number axis ticks so Altair does not display
-            rounded duplicate values like 0, 1, 1, 2, 2.
-            """
-            max_count = int(series.max()) if len(series) and pd.notna(series.max()) else 0
-            return list(range(0, max_count + 1))
-
-        ac1, ac2 = st.columns(2)
-
-        # Risk distribution
-        with ac1:
-            st.markdown("**Risk Distribution**")
-
-            risk_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
-
-            risk_counts = dff["risk_level"].value_counts().reindex(
-                risk_order, fill_value=0
+    
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
+    # ─────────────────────────────────────────────
+    # TRIAGE DECISION SUPPORT
+    # ─────────────────────────────────────────────
+    st.markdown('<div class="section-hdr">Triage Decision Support</div>', unsafe_allow_html=True)
+    dec_cls, dec_text = triage_decision(sel_row)
+    st.markdown(f'<div class="{dec_cls}">{dec_text}</div>', unsafe_allow_html=True)
+    if has_identity_pivot_signal(sel_row):
+        st.info(
+            "Identity Pivot Recommended: This alert contains identity-risk indicators. "
+            "Review the IdentityGuard AI tab for deeper account-takeover or access-abuse triage."
+        )
+    with st.expander("Identity Pivot", expanded=False):
+        st.info(
+            "If this alert involves account takeover, MFA abuse, OAuth consent, mailbox forwarding, "
+            "impossible travel, or privileged login activity, review the IdentityGuard AI tab for "
+            "deeper identity-risk triage."
+        )
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    
+    # ─────────────────────────────────────────────
+    # AI ANALYST INSIGHT
+    # ─────────────────────────────────────────────
+    insight = safe_str(sel_row.get("analyst_insight", ""), "No analyst insight available.")
+    
+    st.markdown(f"""
+    <div class="detail-panel accent">
+      <div class="panel-title">AI Analyst Insight</div>
+      <div class="insight-box">{insight}</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    
+    # ─────────────────────────────────────────────
+    # RECOMMENDED ACTION
+    # ─────────────────────────────────────────────
+    rec = safe_str(sel_row.get("recommended_action", ""), "")
+    
+    st.markdown(f"""
+    <div class="detail-panel green">
+      <div class="panel-title">Recommended Action</div>
+      {action_items_html(rec)}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    
+    # ─────────────────────────────────────────────
+    # ANALYST HANDOFF SUMMARY
+    # ─────────────────────────────────────────────
+    
+    # Pull selected alert values for the handoff summary.
+    handoff_incident_id = safe_str(sel_row.get("incident_id"))
+    handoff_timestamp = safe_str(sel_row.get("timestamp"))
+    handoff_status = safe_str(sel_row.get("status"))
+    handoff_risk = safe_str(sel_row.get("risk_level"))
+    handoff_mitre = safe_str(sel_row.get("mitre_technique"))
+    handoff_confidence = safe_str(sel_row.get("confidence"))
+    handoff_fp = safe_str(sel_row.get("false_positive_likelihood"))
+    handoff_source = safe_str(sel_row.get("source_file"))
+    
+    handoff_ip = safe_str(sel_row.get("enriched_ip"))
+    handoff_country = safe_str(sel_row.get("country"))
+    handoff_city = safe_str(sel_row.get("city"))
+    handoff_asn = safe_str(sel_row.get("asn_org"))
+    handoff_hosting = "Yes" if sel_row.get("hosting", False) else "No"
+    handoff_proxy = "Yes" if sel_row.get("proxy", False) else "No"
+    
+    handoff_vt_verdict = safe_str(sel_row.get("vt_verdict"))
+    handoff_vt_malicious = safe_str(sel_row.get("vt_malicious"))
+    handoff_vt_suspicious = safe_str(sel_row.get("vt_suspicious"))
+    
+    handoff_summary = f"""SOC Analyst Handoff Summary
+    
+    Incident: {handoff_incident_id} | Risk: {handoff_risk} | MITRE: {handoff_mitre}
+    Time: {handoff_timestamp} | Status: {handoff_status} | Source: {handoff_source}
+    Confidence: {handoff_confidence} | False Positive Likelihood: {handoff_fp}%
+    
+    Key Context:
+    - Indicator: {handoff_ip}
+    - Location/ASN: {handoff_city}, {handoff_country} | {handoff_asn}
+    - VT Verdict: {handoff_vt_verdict} | Malicious: {handoff_vt_malicious} | Suspicious: {handoff_vt_suspicious}
+    - Hosting: {handoff_hosting} | Proxy: {handoff_proxy}
+    
+    Assessment:
+    {insight}
+    
+    Recommended Action:
+    {rec}
+    
+    Analyst Follow-Up:
+    1. Validate in SIEM/EDR using the indicator, host/user, and timeframe.
+    2. Confirm whether the activity is expected or business-approved.
+    3. Escalate if telemetry confirms malicious or unauthorized behavior.
+    """
+    
+    with st.expander("📋 Analyst Handoff Summary", expanded=False):
+        st.text_area(
+            "Copy-ready handoff summary",
+            value=handoff_summary,
+            height=300,
+            label_visibility="collapsed",
+        )
+    
+        st.caption(
+            "Copy into Splunk notes, ServiceNow/Jira, Slack escalation, or SOC shift handoff. Validate AI guidance against raw telemetry and business context."
+        )
+    
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
+    
+    
+    # ─────────────────────────────────────────────
+    # SUGGESTED SPLUNK VALIDATION SEARCHES
+    # ─────────────────────────────────────────────
+    splunk_searches = build_splunk_searches(sel_row)
+    
+    with st.expander("🔎 Suggested Splunk Validation Searches", expanded=False):
+        st.caption(
+            "These SPL queries are validation starting points. Adjust index, sourcetype, host, user, "
+            "field names, and time range for your Splunk environment."
+        )
+    
+        if not splunk_searches:
+            st.info("No strong indicators were available to generate Splunk searches.")
+        else:
+            for search_name, spl_query in splunk_searches.items():
+                st.markdown(f"**{search_name}**")
+                st.code(spl_query, language="spl")
+    
+        st.caption(
+            "The helper prioritizes raw text searches first because Splunk field names vary across environments."
+        )
+    
+    st.markdown("<hr class='soc-divider'>", unsafe_allow_html=True)
+    # ─────────────────────────────────────────────
+    # ANALYTICS (collapsed by default)
+    # ─────────────────────────────────────────────
+    with st.expander("📊  Analytics Overview", expanded=False):
+        if df.empty:
+            st.info("No data loaded.")
+        else:
+            import altair as alt
+    
+            def count_axis_values(series) -> list[int]:
+                """
+                Build exact whole-number axis ticks so Altair does not display
+                rounded duplicate values like 0, 1, 1, 2, 2.
+                """
+                max_count = int(series.max()) if len(series) and pd.notna(series.max()) else 0
+                return list(range(0, max_count + 1))
+    
+            ac1, ac2 = st.columns(2)
+    
+            # Risk distribution
+            with ac1:
+                st.markdown("**Risk Distribution**")
+    
+                risk_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    
+                risk_counts = dff["risk_level"].value_counts().reindex(
+                    risk_order, fill_value=0
+                )
+    
+                risk_df = risk_counts.reset_index()
+                risk_df.columns = ["Risk Level", "Count"]
+    
+                chart = alt.Chart(risk_df).mark_bar().encode(
+                    x=alt.X(
+                        "Count:Q",
+                        title="",
+                        axis=alt.Axis(
+                            values=count_axis_values(risk_df["Count"]),
+                            format="d",
+                        ),
+                    ),
+                    y=alt.Y(
+                        "Risk Level:N",
+                        sort=risk_order,
+                        title="",
+                    ),
+                    color=alt.Color(
+                        "Risk Level:N",
+                        scale=alt.Scale(
+                            domain=risk_order,
+                            range=["#f85149", "#f0883e", "#d29922", "#3fb950"],
+                        ),
+                        legend=None,
+                    ),
+                    tooltip=["Risk Level", "Count"],
+                ).properties(height=140).configure_view(fill="#0d1117").configure_axis(
+                    labelColor="#7d8590",
+                    gridColor="#21262d",
+                    domainColor="#30363d",
+                    tickColor="#30363d",
+                )
+    
+                st.altair_chart(chart, use_container_width=True)
+    
+            # VT verdict distribution
+            with ac2:
+                st.markdown("**VT Verdict Distribution**")
+    
+                vt_order = ["Malicious", "Suspicious", "Clean", "Unknown"]
+    
+                vt_counts = dff["vt_verdict"].apply(normalize_vt_verdict).value_counts().reindex(
+                    vt_order, fill_value=0
+                )
+    
+                vt_df = vt_counts.reset_index()
+                vt_df.columns = ["Verdict", "Count"]
+    
+                color_map = {
+                    "Malicious": "#f85149",
+                    "Suspicious": "#f0883e",
+                    "Clean": "#3fb950",
+                    "Unknown": "#7d8590",
+                }
+    
+                chart2 = alt.Chart(vt_df).mark_bar().encode(
+                    x=alt.X(
+                        "Count:Q",
+                        title="",
+                        axis=alt.Axis(
+                            values=count_axis_values(vt_df["Count"]),
+                            format="d",
+                        ),
+                    ),
+                    y=alt.Y(
+                        "Verdict:N",
+                        sort=vt_order,
+                        title="",
+                    ),
+                    color=alt.Color(
+                        "Verdict:N",
+                        scale=alt.Scale(
+                            domain=list(color_map.keys()),
+                            range=list(color_map.values()),
+                        ),
+                        legend=None,
+                    ),
+                    tooltip=["Verdict", "Count"],
+                ).properties(height=140).configure_view(fill="#0d1117").configure_axis(
+                    labelColor="#7d8590",
+                    gridColor="#21262d",
+                    domainColor="#30363d",
+                    tickColor="#30363d",
+                )
+    
+                st.altair_chart(chart2, use_container_width=True)
+    
+            # Analyst status distribution — full width because this reflects analyst workflow state
+            st.markdown("**Analyst Status Distribution**")
+    
+            status_order = [
+                "NEW",
+                "REVIEWING",
+                "ESCALATED",
+                "CLOSED - TRUE POSITIVE",
+                "CLOSED - FALSE POSITIVE",
+                "CLOSED - BENIGN",
+            ]
+    
+            status_counts = dff["status"].value_counts().reindex(
+                status_order, fill_value=0
             )
-
-            risk_df = risk_counts.reset_index()
-            risk_df.columns = ["Risk Level", "Count"]
-
-            chart = alt.Chart(risk_df).mark_bar().encode(
+    
+            status_df = status_counts.reset_index()
+            status_df.columns = ["Status", "Count"]
+    
+            status_chart = alt.Chart(status_df).mark_bar().encode(
                 x=alt.X(
                     "Count:Q",
                     title="",
                     axis=alt.Axis(
-                        values=count_axis_values(risk_df["Count"]),
+                        values=count_axis_values(status_df["Count"]),
                         format="d",
                     ),
                 ),
                 y=alt.Y(
-                    "Risk Level:N",
-                    sort=risk_order,
+                    "Status:N",
+                    sort=status_order,
                     title="",
                 ),
                 color=alt.Color(
-                    "Risk Level:N",
+                    "Status:N",
                     scale=alt.Scale(
-                        domain=risk_order,
-                        range=["#f85149", "#f0883e", "#d29922", "#3fb950"],
+                        domain=status_order,
+                        range=[
+                            "#c9d1d9",
+                            "#bc8cff",
+                            "#f85149",
+                            "#3fb950",
+                            "#7d8590",
+                            "#7d8590",
+                        ],
                     ),
                     legend=None,
                 ),
-                tooltip=["Risk Level", "Count"],
-            ).properties(height=140).configure_view(fill="#0d1117").configure_axis(
+                tooltip=["Status", "Count"],
+            ).properties(height=230).configure_view(fill="#0d1117").configure_axis(
                 labelColor="#7d8590",
                 gridColor="#21262d",
                 domainColor="#30363d",
                 tickColor="#30363d",
+                labelLimit=220,
             )
-
-            st.altair_chart(chart, use_container_width=True)
-
-        # VT verdict distribution
-        with ac2:
-            st.markdown("**VT Verdict Distribution**")
-
-            vt_order = ["Malicious", "Suspicious", "Clean", "Unknown"]
-
-            vt_counts = dff["vt_verdict"].apply(normalize_vt_verdict).value_counts().reindex(
-                vt_order, fill_value=0
-            )
-
-            vt_df = vt_counts.reset_index()
-            vt_df.columns = ["Verdict", "Count"]
-
-            color_map = {
-                "Malicious": "#f85149",
-                "Suspicious": "#f0883e",
-                "Clean": "#3fb950",
-                "Unknown": "#7d8590",
-            }
-
-            chart2 = alt.Chart(vt_df).mark_bar().encode(
-                x=alt.X(
-                    "Count:Q",
-                    title="",
-                    axis=alt.Axis(
-                        values=count_axis_values(vt_df["Count"]),
-                        format="d",
+    
+            st.altair_chart(status_chart, use_container_width=True)
+    
+            ac3, ac4 = st.columns(2)
+    
+            # Top MITRE techniques
+            with ac3:
+                st.markdown("**Top MITRE Techniques**")
+    
+                mitre_counts = dff["mitre_technique"].value_counts().head(8).reset_index()
+                mitre_counts.columns = ["Technique", "Count"]
+    
+                chart3 = alt.Chart(mitre_counts).mark_bar(color="#bc8cff").encode(
+                    x=alt.X(
+                        "Count:Q",
+                        title="",
+                        axis=alt.Axis(
+                            values=count_axis_values(mitre_counts["Count"]),
+                            format="d",
+                        ),
                     ),
-                ),
-                y=alt.Y(
-                    "Verdict:N",
-                    sort=vt_order,
-                    title="",
-                ),
-                color=alt.Color(
-                    "Verdict:N",
-                    scale=alt.Scale(
-                        domain=list(color_map.keys()),
-                        range=list(color_map.values()),
+                    y=alt.Y("Technique:N", sort="-x", title=""),
+                    tooltip=["Technique", "Count"],
+                ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
+                    labelColor="#7d8590",
+                    gridColor="#21262d",
+                    domainColor="#30363d",
+                    tickColor="#30363d",
+                    labelLimit=180,
+                )
+    
+                st.altair_chart(chart3, use_container_width=True)
+    
+            # Top enriched IPs
+            with ac4:
+                st.markdown("**Top Enriched IPs**")
+    
+                ip_counts = dff["enriched_ip"].value_counts().head(8).reset_index()
+                ip_counts.columns = ["IP", "Count"]
+    
+                chart4 = alt.Chart(ip_counts).mark_bar(color="#388bfd").encode(
+                    x=alt.X(
+                        "Count:Q",
+                        title="",
+                        axis=alt.Axis(
+                            values=count_axis_values(ip_counts["Count"]),
+                            format="d",
+                        ),
                     ),
-                    legend=None,
-                ),
-                tooltip=["Verdict", "Count"],
-            ).properties(height=140).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590",
-                gridColor="#21262d",
-                domainColor="#30363d",
-                tickColor="#30363d",
-            )
-
-            st.altair_chart(chart2, use_container_width=True)
-
-        # Analyst status distribution — full width because this reflects analyst workflow state
-        st.markdown("**Analyst Status Distribution**")
-
-        status_order = [
-            "NEW",
-            "REVIEWING",
-            "ESCALATED",
-            "CLOSED - TRUE POSITIVE",
-            "CLOSED - FALSE POSITIVE",
-            "CLOSED - BENIGN",
-        ]
-
-        status_counts = dff["status"].value_counts().reindex(
-            status_order, fill_value=0
-        )
-
-        status_df = status_counts.reset_index()
-        status_df.columns = ["Status", "Count"]
-
-        status_chart = alt.Chart(status_df).mark_bar().encode(
-            x=alt.X(
-                "Count:Q",
-                title="",
-                axis=alt.Axis(
-                    values=count_axis_values(status_df["Count"]),
-                    format="d",
-                ),
-            ),
-            y=alt.Y(
-                "Status:N",
-                sort=status_order,
-                title="",
-            ),
-            color=alt.Color(
-                "Status:N",
-                scale=alt.Scale(
-                    domain=status_order,
-                    range=[
-                        "#c9d1d9",
-                        "#bc8cff",
-                        "#f85149",
-                        "#3fb950",
-                        "#7d8590",
-                        "#7d8590",
-                    ],
-                ),
-                legend=None,
-            ),
-            tooltip=["Status", "Count"],
-        ).properties(height=230).configure_view(fill="#0d1117").configure_axis(
-            labelColor="#7d8590",
-            gridColor="#21262d",
-            domainColor="#30363d",
-            tickColor="#30363d",
-            labelLimit=220,
-        )
-
-        st.altair_chart(status_chart, use_container_width=True)
-
-        ac3, ac4 = st.columns(2)
-
-        # Top MITRE techniques
-        with ac3:
-            st.markdown("**Top MITRE Techniques**")
-
-            mitre_counts = dff["mitre_technique"].value_counts().head(8).reset_index()
-            mitre_counts.columns = ["Technique", "Count"]
-
-            chart3 = alt.Chart(mitre_counts).mark_bar(color="#bc8cff").encode(
-                x=alt.X(
-                    "Count:Q",
-                    title="",
-                    axis=alt.Axis(
-                        values=count_axis_values(mitre_counts["Count"]),
-                        format="d",
-                    ),
-                ),
-                y=alt.Y("Technique:N", sort="-x", title=""),
-                tooltip=["Technique", "Count"],
-            ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590",
-                gridColor="#21262d",
-                domainColor="#30363d",
-                tickColor="#30363d",
-                labelLimit=180,
-            )
-
-            st.altair_chart(chart3, use_container_width=True)
-
-        # Top enriched IPs
-        with ac4:
-            st.markdown("**Top Enriched IPs**")
-
-            ip_counts = dff["enriched_ip"].value_counts().head(8).reset_index()
-            ip_counts.columns = ["IP", "Count"]
-
-            chart4 = alt.Chart(ip_counts).mark_bar(color="#388bfd").encode(
-                x=alt.X(
-                    "Count:Q",
-                    title="",
-                    axis=alt.Axis(
-                        values=count_axis_values(ip_counts["Count"]),
-                        format="d",
-                    ),
-                ),
-                y=alt.Y("IP:N", sort="-x", title=""),
-                tooltip=["IP", "Count"],
-            ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
-                labelColor="#7d8590",
-                gridColor="#21262d",
-                domainColor="#30363d",
-                tickColor="#30363d",
-            )
-
-            st.altair_chart(chart4, use_container_width=True)# ─────────────────────────────────────────────
-# RAW ALERT RECORD (collapsed by default)
-# ─────────────────────────────────────────────
-with st.expander("🗂  Raw Alert Record", expanded=False):
-    import json
-
-    raw = {k: v for k, v in sel_row.items() if not k.startswith("_")}
-
-    # Convert non-serializable types
-    for k, v in raw.items():
-        if isinstance(v, bool):
-            raw[k] = bool(v)
-        elif pd.isna(v) if isinstance(v, float) else False:
-            raw[k] = None
-
-    st.code(json.dumps(raw, indent=2, default=str), language="json")
-
-
-# ─────────────────────────────────────────────
-# FOOTER
-# ─────────────────────────────────────────────
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown("""
-<div style="font-family:'Courier New',monospace;font-size:0.62rem;color:#30363d;text-align:center;letter-spacing:0.08em">
-AI-SOC TRIAGE CONSOLE &bull; L1 ANALYST DECISION-SUPPORT &bull; ANTHROPIC CLAUDE
-</div>
-""", unsafe_allow_html=True)
+                    y=alt.Y("IP:N", sort="-x", title=""),
+                    tooltip=["IP", "Count"],
+                ).properties(height=200).configure_view(fill="#0d1117").configure_axis(
+                    labelColor="#7d8590",
+                    gridColor="#21262d",
+                    domainColor="#30363d",
+                    tickColor="#30363d",
+                )
+    
+                st.altair_chart(chart4, use_container_width=True)# ─────────────────────────────────────────────
+    # RAW ALERT RECORD (collapsed by default)
+    # ─────────────────────────────────────────────
+    with st.expander("🗂  Raw Alert Record", expanded=False):
+        import json
+    
+        raw = {k: v for k, v in sel_row.items() if not k.startswith("_")}
+    
+        # Convert non-serializable types
+        for k, v in raw.items():
+            if isinstance(v, bool):
+                raw[k] = bool(v)
+            elif pd.isna(v) if isinstance(v, float) else False:
+                raw[k] = None
+    
+        st.code(json.dumps(raw, indent=2, default=str), language="json")
+    
+    
+    # ─────────────────────────────────────────────
+    # FOOTER
+    # ─────────────────────────────────────────────
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style="font-family:'Courier New',monospace;font-size:0.62rem;color:#30363d;text-align:center;letter-spacing:0.08em">
+    AI-SOC TRIAGE CONSOLE &bull; L1 ANALYST DECISION-SUPPORT &bull; ANTHROPIC CLAUDE
+    </div>
+    """, unsafe_allow_html=True)

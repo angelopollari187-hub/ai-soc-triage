@@ -1,7 +1,12 @@
 .env
+.claude/
 output/
+output/identity_ai_summaries.json
+output/identity_reports/
+output/triage.log
 uploaded_logs/
 runtime/
 __pycache__/
+.pytest_cache/
 *.pyc
 .DS_Store
