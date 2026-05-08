@@ -1,278 +1,336 @@
-# AI-Powered SOC Triage System
+# AI-SOC Triage Console
+AI-Powered SOC Decision-Support Dashboard with IdentityGuard AI
 
-> A Python-based SOC analyst decision-support tool for accelerating alert review, risk classification, and investigation handoff.
-
----
-
-## Overview
-
-**AI-SOC Triage** is a portfolio lab project that simulates a real-world SOC analyst workflow. It accepts raw security log files or Splunk alert export CSVs, runs AI-assisted triage via the Claude API, enriches indicators with threat intelligence, maps activity to MITRE ATT&CK, and presents results in a Streamlit dashboard built around L1 SOC workflows.
-
-This tool is positioned as a **triage gateway** — it sits between alert sources and the analyst's existing SOC workflow. It does not replace a SIEM, SOAR, EDR, ticketing platform, or incident response process. AI generates risk classifications and recommended actions. The analyst controls all operational decisions.
+> A cybersecurity portfolio project that models an analyst-guided SOC triage workflow across broad alert intake, AI-assisted analysis, enrichment, MITRE ATT&CK mapping, and identity-risk investigation.
 
 ---
 
-## Triage Workflow
+## Project Summary
 
+**AI-SOC Triage Console** simulates a practical SOC analyst workflow for reviewing alerts, logs, and exported SIEM/EDR data. It ingests security events, performs AI-assisted triage, enriches indicators, maps activity to MITRE ATT&CK, and presents analyst-ready output in a Streamlit dashboard.
+
+The upgraded project now includes **IdentityGuard AI**, a focused identity/account-takeover triage module for MFA fatigue, suspicious sign-ins, OAuth consent abuse, mailbox forwarding, unmanaged device access, password reset risk, and privileged account activity.
+
+The goal is to reduce alert fatigue, speed up L1/L2 triage, and support better true-positive/false-positive decisions. This is a decision-support prototype, not a production SOAR replacement.
+
+---
+
+## Problem This Project Solves
+
+SOC analysts are often overloaded with alerts that lack enough context for fast decisions. L1 analysts need a structured way to move from raw alert data to a clear investigation path without losing sight of false-positive risk.
+
+Identity alerts are especially difficult because a single event rarely tells the full story. MFA prompts, OAuth consent, device posture, mailbox rules, password resets, travel context, and user intent all affect whether an alert should be escalated or closed.
+
+This project organizes those signals into an analyst workflow:
+
+- Convert alert/log data into reviewable incidents
+- Add risk, confidence, false-positive likelihood, and MITRE context
+- Preserve analyst control over status and escalation decisions
+- Provide suggested validation searches and handoff notes
+- Add a dedicated identity-risk deep dive when account-takeover signals appear
+
+---
+
+## Analyst Workflow
+
+### SOC Triage
+
+```text
+Upload alert/log/Splunk export
+        ->
+AI triage + enrichment
+        ->
+Review alert queue
+        ->
+Validate with suggested searches
+        ->
+Escalate / close / handoff
 ```
-Splunk Alert Export CSV / Raw Log (.txt) / SIEM JSON Alert
-                        ↓
-              AI-SOC Triage Engine
-                        ↓
-       Risk Classification + MITRE ATT&CK Mapping
-                        ↓
-      Indicator Enrichment + VirusTotal Context
-                        ↓
-           SOC Dashboard Review (Streamlit)
-                        ↓
-     Analyst Status Update + Handoff Summary
-                        ↓
-  Splunk Validation Searches + Exportable Results
+
+### IdentityGuard AI
+
+```text
+Upload identity CSV/JSON
+        ->
+Detect identity-risk patterns
+        ->
+Review Priority Confidence next moves
+        ->
+Validate true/false-positive evidence
+        ->
+Update analyst status
+        ->
+Export handoff/report
 ```
+
+**SOC Triage** is the broad L1 alert triage layer.  
+**IdentityGuard AI** is the focused identity/account-takeover deep-dive module.
+
+---
+
+## Dashboard Tabs
+
+| Tab | Purpose | Best Used For |
+|---|---|---|
+| SOC Triage | Broad alert intake and L1 triage | SIEM/EDR alerts, Splunk exports, single log bundles, `alerts_summary.csv` |
+| IdentityGuard AI | Identity-risk deep dive | MFA fatigue, OAuth abuse, mailbox forwarding, suspicious sign-ins, privileged account risk |
+
+The dashboard also includes a compact **Data Intake Guide** explaining when to use SOC Triage versus IdentityGuard AI.
 
 ---
 
 ## Demo Screenshots
 
+The screenshots below reflect the SOC dashboard workflow already included in this repository. IdentityGuard AI is implemented in the current dashboard code; updated IdentityGuard screenshots can be added later without renaming the existing files.
+
 ### SOC Dashboard Overview
+
 ![SOC Dashboard Overview](images/dashboard_overview1.png)
 ![SOC Dashboard Overview](images/dashboard_overview2.png)
 ![SOC Dashboard Overview](images/dashboard_overview3.png)
-
-### Analyst-Controlled Status Workflow
-![Analyst Status Workflow](images/analyst_status_workflow.png)
-
-### Analytics Overview
+![SOC Dashboard Overview](images/dashboard_overview4.png)
+![Analyst Handoff Summary](images/analyst_handoff_summary.png)
+![Splunk Validation Searches](images/splunk_validation_searches.png)
 ![Analytics Overview](images/analytics_overview.png)
 
-### Suggested Splunk Validation Searches
-![Splunk Validation Searches](images/splunk_validation_searches.png)
-
-### Analyst Handoff Summary
-![Analyst Handoff Summary](images/analyst_handoff_summary.png)
-
 ### Slack Alert Output
+
 ![Slack Alert](images/slack_alert.png)
 
 ### Terminal Triage Output
+
 ![Terminal Demo](images/terminal_demo.png)
 
 ---
 
-## Core Features
+## SOC Triage Capabilities
 
-### 1. AI-Powered Triage Engine
+The SOC Triage tab is designed for broad alert intake and L1 review.
 
-Processes raw `.txt` security logs, Splunk alert export CSVs, and structured JSON SIEM/UEBA alerts through the Claude API.
-
-For each alert, the engine produces:
-
-- An analyst-friendly incident summary in plain language
-- Risk classification: `LOW`, `MEDIUM`, `HIGH`, or `CRITICAL`
-- Confidence score and estimated false-positive likelihood
-- MITRE ATT&CK technique mapping
-- Recommended SOC validation and response actions
-
-AI output is a starting point, not a verdict. All results require analyst review against raw logs and operational context.
-
----
-
-### 2. Streamlit SOC Analyst Dashboard
-
-A purpose-built analyst interface for reviewing triage output. The dashboard is organized around a standard L1 workflow.
-
-**Alert Queue**
-- Searchable and filterable alert list
-- Filter by risk level, analyst status, and VirusTotal verdict
-- Search by incident ID, IP address, MITRE technique, or source file
-
-**Incident Detail Panel**
-- Incident overview with timestamp, source, and risk classification
-- Threat intelligence panel with enriched IP and VirusTotal context
-- AI analyst insight and recommended action breakdown
-- Analyst-controlled status update
-- Suggested Splunk SPL validation searches
-- Copy-ready analyst handoff summary
-
-**Analytics Overview**
-- Risk distribution
-- VirusTotal verdict distribution
-- Analyst status distribution
-- Top MITRE techniques
-- Top enriched IPs
-
-**Export**
-- Export the current dashboard view (with any active filters applied) as a CSV for tickets, handoff, or reporting
-
----
-
-### 3. Direct Splunk Alert Export Triage
-
-Analysts can upload a Splunk alert export CSV directly into the dashboard sidebar.
-
-- Each row in the CSV is automatically converted into a triage-ready event
-- AI triage runs on each row without manual file conversion
-- Results appear in the alert queue alongside other incidents
-
-This workflow is designed for exported alert CSV files. It is not a live Splunk API integration.
-
----
-
-### 4. Analyst-Controlled Status Workflow
-
-AI-generated alerts start as `NEW`. The analyst controls the operational review state from the dashboard.
-
-**Supported statuses:**
-
-| Status | Description |
+| Capability | Description |
 |---|---|
-| `NEW` | Alert has not been reviewed |
-| `REVIEWING` | Analyst is actively investigating |
-| `ESCALATED` | Alert has been escalated for further action |
-| `CLOSED - TRUE POSITIVE` | Confirmed malicious activity |
-| `CLOSED - FALSE POSITIVE` | Confirmed non-malicious, alert noise |
-| `CLOSED - BENIGN` | Activity confirmed as expected behavior |
+| Processed alert upload | Upload an existing `alerts_summary.csv` into the dashboard |
+| Template download | Download a sample `alerts_summary.csv` template |
+| Raw log triage | Upload a single `.txt` incident/log bundle for AI-assisted triage |
+| Splunk export triage | Upload a Splunk alert export CSV for batch triage |
+| AI-assisted analysis | Generate analyst-friendly incident summaries and recommended actions |
+| MITRE ATT&CK mapping | Map activity to relevant ATT&CK techniques |
+| Threat enrichment | Display IP enrichment and VirusTotal-style verdict fields |
+| Risk support | Show risk level, confidence, and false-positive likelihood |
+| Analyst status workflow | Update incident state from the dashboard |
+| Suggested validation searches | Generate starting-point Splunk SPL searches |
+| Analyst handoff | Produce copy-ready handoff summaries for tickets or shift notes |
+| Export current view | Download the currently filtered alert view as CSV |
 
-Status updates are reflected across the alert queue, status filter, incident overview, handoff summary, analytics overview, and exported CSV.
+### SOC Analyst Sections
 
-AI generates risk and recommendations. The analyst determines and records the final operational status.
+The SOC Triage tab includes:
+
+- SOC Intake
+- SOC Filters
+- KPI strip
+- Export Current View
+- Alert Queue
+- Incident Detail
+- Analyst Status Update
+- Triage Decision Support
+- AI Analyst Insight
+- Recommended Action
+- Analyst Handoff Summary
+- Suggested Splunk Validation Searches
+- Analytics Overview
+- Raw Alert Record
+
+---
+### IdentityGuard AI Dashboard Overview
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview1.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview2.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview3.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview4.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview5.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview6.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview7.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview8.png)
+![IdentityGuard AI Dashboard Overview](images/IdentityGuard_overview9.png)
+
+## IdentityGuard AI Capabilities
+
+IdentityGuard AI is a deterministic identity-risk module focused on account takeover and access-abuse investigations. It complements the general SOC Triage workflow by giving analysts a deeper view of identity telemetry and likely response sequencing.
+
+| Capability | Description |
+|---|---|
+| Identity CSV upload | Upload structured identity telemetry events |
+| Identity JSON upload | Upload structured identity incidents or flat event lists |
+| Template downloads | Download sample Identity CSV and JSON templates |
+| SOC pivot review | Upload `alerts_summary.csv` for limited identity-signal preview |
+| MFA fatigue detection | Identify repeated MFA denials followed by approval |
+| Suspicious sign-in review | Detect sign-in patterns involving risk signals and context changes |
+| Impossible travel | Flag geographic travel patterns that require validation |
+| New/unmanaged device risk | Highlight unknown or unmanaged device access |
+| OAuth consent abuse | Detect high-risk consent and application access token concerns |
+| Mailbox forwarding | Surface BEC-style persistence indicators |
+| Password reset risk | Detect password reset activity tied to risky login behavior |
+| Privileged/admin risk | Highlight administrative account activity with identity risk factors |
+| Deterministic scoring | Score identity incidents with explainable rules |
+| Priority Confidence | Rank recommended next moves for first-response sequencing |
+| False-positive support | Show FP likelihood and validation guidance |
+| Evidence timeline | Display identity event sequence for the selected incident |
+| Risk breakdown | Show scoring reasons and rule contributions |
+| Control gaps | Surface Zero Trust / hardening gaps for supporting evidence |
+| Optional AI summary | Generate a button-gated narrative assist when an API key is configured |
+| Handoff/reporting | Generate analyst handoff text and Markdown/JSON exports |
+
+### IdentityGuard Dashboard Sections
+
+The IdentityGuard AI tab includes:
+
+- IdentityGuard Intake
+- IdentityGuard Filters
+- KPI cards
+- Identity Incident Queue
+- Incident Snapshot
+- Analyst Decision
+- Recommended Next Moves
+- Analyst Status Update
+- Full Playbook Steps / Company-Specific SOAR Mapping
+- Supporting Evidence
+- Identity Event Timeline
+- Risk Score Breakdown
+- Zero Trust Control Gaps
+- Reporting & Export
+- AI Analyst Summary
+- Analyst Handoff Report
+- Export Incident Report
+- Export Filtered View
+- Export Handoff Report
 
 ---
 
-### 5. Raw `.txt` Log Upload
+## Priority Confidence
 
-The dashboard supports uploading a raw `.txt` log file for single-incident triage review.
+**Priority Confidence** ranks recommended first-response actions based on deterministic rule evidence. It is not a final probability of compromise.
 
-- One uploaded file = one AI triage review
-- The file is analyzed as a complete log bundle and appended to `output/alerts_summary.csv`
-- Result appears in the alert queue
+The purpose is to help analysts sequence response actions quickly while still validating against raw telemetry, user intent, device ownership, and business context.
 
-> **Note:** This feature is not designed to split a single large `.txt` file into multiple alert rows. For multi-incident batch processing, use separate `.txt` files per incident or run batch mode from the CLI.
+Example IdentityGuard next moves:
 
----
+| Priority Confidence | Recommended Next Move |
+|---:|---|
+| 95% | Escalate and contain identity session |
+| 90% | Validate user intent out-of-band |
+| 88% | Remove persistence mechanisms |
+| 82% | Review mailbox and tenant impact |
+| 75% | Harden access path after containment |
 
-### 6. MITRE ATT&CK Mapping
-
-The triage engine maps detected behavior to relevant MITRE ATT&CK techniques, including:
-
-- `T1078` — Valid Accounts
-- `T1110` — Brute Force
-- `T1048` — Exfiltration Over Alternative Protocol
-- `T1098` — Account Manipulation
-- `T1059` — Command and Scripting Interpreter
-- `T1003` — OS Credential Dumping
-- `T1486` — Data Encrypted for Impact
-- `T1566` — Phishing
+Priority Confidence is deterministic and based on fields such as detection type, all detections, risk level, risk score, false-positive likelihood, and escalation decision.
 
 ---
 
-### 7. Threat Intelligence Enrichment
+## False-Positive Review
 
-**Public IP enrichment** (via IP geolocation API):
-- Country and city
-- ASN / organization
-- Hosting provider detection
-- Proxy detection
+The dashboard does not automatically declare compromise.
 
-**VirusTotal enrichment:**
-- Verdict classification: `Malicious`, `Suspicious`, `Clean`, `Unknown`
-- Malicious, suspicious, harmless, and undetected engine counts
-- Reputation score
+Instead, it provides:
 
----
+- Risk level
+- Confidence
+- False-positive likelihood
+- Supporting rule evidence
+- Recommended validation steps
+- Analyst-controlled status updates
 
-### 8. Analyst Handoff Summary
-
-Each selected alert generates a copy-ready SOC handoff summary suitable for:
-
-- Splunk analyst notes
-- ServiceNow tickets
-- Jira tickets
-- Slack escalation messages
-- SOC shift handoff documentation
-
-**Summary includes:**
-- Incident ID and timestamp
-- Analyst status and risk level
-- MITRE technique
-- Confidence and false-positive likelihood
-- Indicator context
-- VirusTotal verdict
-- AI assessment
-- Recommended action and analyst follow-up steps
+Analysts remain responsible for validating user intent, business context, device ownership, telemetry, and whether activity was authorized. This helps reduce alert fatigue without over-escalating ambiguous activity.
 
 ---
 
-### 9. Suggested Splunk Validation Searches
+## Project Architecture
 
-For each selected alert, the dashboard generates suggested SPL searches as investigative starting points.
-
-Search types may include:
-- Broad indicator search
-- Broad correlation search
-- Optional field-based IP search template
-- Behavior / MITRE validation search
-
-> These searches are starting points. Analysts should adjust index names, sourcetypes, fields, hosts, users, and time ranges for their specific Splunk environment before running.
-
----
-
-### 10. Export Current Dashboard View
-
-The dashboard includes an export button that downloads the currently displayed alert set as a CSV.
-
-Supports:
-- Ticket attachments
-- Analyst handoff documentation
-- Reporting and evidence collection
-- Filtered subset review
-
-If a filter is active, only the filtered alerts are exported.
+| Component | Purpose |
+|---|---|
+| `dashboard.py` | Main Streamlit dashboard with SOC Triage and IdentityGuard tabs |
+| `triage.py` | AI-assisted SOC triage engine |
+| `enrichment.py` | Indicator/IP enrichment support |
+| `virustotal.py` | VirusTotal-style reputation lookup fields |
+| `csv_exporter.py` | SOC alert output/export handling |
+| `splunk_export_ingest.py` | Converts Splunk exports into triage-ready incidents |
+| `identityguard/identity_rules.py` | IdentityGuard deterministic detection rules |
+| `identityguard/identity_scoring.py` | IdentityGuard risk scoring and triage result aggregation |
+| `identityguard/identity_dashboard.py` | IdentityGuard Streamlit UI |
+| `identityguard/identity_ai_prompt.py` | Optional AI summary prompt support |
+| `identityguard/identity_report_writer.py` | Markdown/JSON identity incident report export |
+| `identityguard/demo_identity_generator.py` | Builds sample identity incidents for testing/demo use |
+| `identityguard/identity_csv_exporter.py` | Writes IdentityGuard triage results to CSV |
+| `run_identity_triage.py` | IdentityGuard CLI verification/demo runner |
 
 ---
 
-### 11. Slack Alerting
+## Supported Inputs
 
-The system sends structured Slack notifications for `HIGH` and `CRITICAL` incidents via webhook.
-
-**Each alert includes:**
-- Incident metadata and risk level
-- MITRE technique mapping
-- Threat intelligence context
-- Confidence and false-positive likelihood
-- Recommended action
-
----
-
-### 12. SIEM / UEBA Alert Ingestion
-
-The project supports structured JSON-based simulated SIEM/UEBA alert ingestion for lab and portfolio demonstration scenarios.
-
----
-
-## Detection Capabilities
-
-| Scenario | Risk | MITRE Technique |
+| Input | Used By | Purpose |
 |---|---|---|
-| Impossible travel | HIGH | T1078 |
-| Abnormal login volume | HIGH | T1110 |
-| Data exfiltration | CRITICAL | T1048 |
-| Privileged account anomaly | CRITICAL | T1098 |
-| Malware execution | CRITICAL | T1059 |
-| Credential dumping | HIGH | T1003 |
-| Ransomware-style encryption | CRITICAL | T1486 |
-| Phishing activity | MEDIUM | T1566 |
+| `alerts_summary.csv` | SOC Triage | Processed SOC dashboard alerts |
+| Single `.txt` log bundle | SOC Triage | One incident/log bundle for AI triage |
+| Splunk alert export CSV | SOC Triage | Exported Splunk alert rows for batch triage |
+| Identity CSV | IdentityGuard AI | Structured identity telemetry events |
+| Identity JSON | IdentityGuard AI | Structured identity incidents/events |
+| `alerts_summary.csv` identity pivot review | IdentityGuard AI | Limited preview of identity-related SOC alerts |
+
+### IdentityGuard Minimum Fields
+
+IdentityGuard CSV/JSON uploads require:
+
+- `incident_id`
+- `user`
+- `event_time`
+- `event_type`
+
+### IdentityGuard Optional Fields
+
+IdentityGuard can also use:
+
+- `user_role`
+- `source_ip`
+- `country`
+- `city`
+- `device_id`
+- `device_trust_status`
+- `device_os`
+- `mfa_result`
+- `mfa_method`
+- `app_name`
+- `action`
+- `oauth_app_name`
+- `oauth_permission`
+- `mailbox_action`
+- `risk_signal`
+- `known_vpn`
+- `impossible_travel_flag`
+- `failed_login_count`
+- `session_id`
+- `notes`
+
+Missing optional string fields default to blank, booleans default to `false`, and numeric fields default to `0`.
+
+---
+
+## Outputs
+
+| Output | Purpose |
+|---|---|
+| `output/alerts_summary.csv` | SOC triage results used by the SOC dashboard |
+| `output/identity_alerts.csv` | IdentityGuard triage results |
+| Filtered dashboard CSV export | SOC reporting, ticket attachment, or shift handoff |
+| IdentityGuard filtered CSV export | Identity incident queue export |
+| IdentityGuard handoff TXT export | Copy-ready analyst handoff |
+| IdentityGuard Markdown report | Selected incident report |
+| IdentityGuard JSON report | Structured selected incident report |
+| Optional Slack webhook message | High/critical alert notification when configured |
+
+Runtime outputs are generated locally and should be reviewed before committing or sharing.
 
 ---
 
 ## How to Run
-
-### Clone the Repository
-
-```bash
-git clone https://github.com/angelopollari187-hub/ai-soc-triage.git
-cd ai-soc-triage
-```
 
 ### Install Dependencies
 
@@ -280,14 +338,28 @@ cd ai-soc-triage
 pip install -r requirements.txt
 ```
 
-### Configure Environment Variables
+### Optional Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root if you want live AI summaries, VirusTotal enrichment, or Slack webhook notifications:
 
-```
+```text
 ANTHROPIC_API_KEY=your_api_key_here
 VIRUSTOTAL_API_KEY=your_virustotal_key_here
 SLACK_WEBHOOK_URL=your_slack_webhook_here
+```
+
+Do not commit `.env` or API keys.
+
+### Verify IdentityGuard Demo Data
+
+```bash
+python run_identity_triage.py --verify
+```
+
+### Launch the Dashboard
+
+```bash
+python -m streamlit run dashboard.py
 ```
 
 ### Run Single Raw Log Triage
@@ -320,30 +392,43 @@ py alert_ingest.py --alert alerts/impossible_travel.json
 py alert_ingest.py --batch alerts/
 ```
 
-### Launch the Dashboard
-
-```bash
-python -m streamlit run dashboard.py
-```
-
 ---
 
 ## Splunk Export Demo Workflow
 
 1. Run `python -m streamlit run dashboard.py`
-2. In the sidebar, upload a Splunk alert export CSV under the **Splunk Alert Export** section
-3. Click **Run Splunk Export Triage**
-4. Review the generated alerts in the alert queue
-5. Select an incident
-6. Review the incident overview, threat intelligence, AI insight, recommended action, analyst handoff summary, and suggested Splunk validation searches
-7. Update the analyst status from the dropdown
-8. Export the current dashboard view as a CSV
+2. Open the **SOC Triage** tab
+3. In **SOC Intake**, upload a Splunk alert export CSV
+4. Click **Run Splunk Export Triage**
+5. Review generated alerts in the alert queue
+6. Select an incident
+7. Review incident overview, threat intelligence, AI insight, recommended action, handoff summary, and suggested Splunk validation searches
+8. Update analyst status
+9. Export the current dashboard view as CSV if needed
+
+This workflow is designed for exported alert CSV files. It is not a live Splunk API integration.
+
+---
+
+## IdentityGuard Demo Workflow
+
+1. Run `python run_identity_triage.py --verify`
+2. Run `python -m streamlit run dashboard.py`
+3. Open the **IdentityGuard AI** tab
+4. Review **IdentityGuard Intake** and template downloads
+5. Select `INC-IG-012` from the Identity Incident Queue
+6. Review **Recommended Next Moves** and Priority Confidence
+7. Review Supporting Evidence, including timeline and scoring breakdown
+8. Open **Analyst Handoff Report**
+9. Export Markdown or JSON incident report if needed
+
+IdentityGuard AI can also accept structured Identity CSV or JSON files that match the documented event fields.
 
 ---
 
 ## Example AI Triage Output
 
-```
+```text
 INCIDENT SUMMARY
 ----------------
 Incident ID   : TRG-20240501-0042
@@ -353,7 +438,7 @@ Risk Level    : HIGH
 Confidence    : 82%
 FP Likelihood : Low
 
-MITRE ATT&CK  : T1110 — Brute Force
+MITRE ATT&CK  : T1110 - Brute Force
 
 ASSESSMENT
 ----------
@@ -385,6 +470,35 @@ VT Reputation  : -75
 
 ---
 
+## Detection and Triage Coverage
+
+### SOC Triage Examples
+
+| Scenario | Risk Support | MITRE Technique |
+|---|---|---|
+| Impossible travel / valid account anomaly | HIGH | T1078 |
+| Abnormal login volume | HIGH | T1110 |
+| Data exfiltration | CRITICAL | T1048 |
+| Privileged account anomaly | CRITICAL | T1098 |
+| Malware execution | CRITICAL | T1059 |
+| Credential dumping | HIGH | T1003 |
+| Ransomware-style encryption | CRITICAL | T1486 |
+| Phishing activity | MEDIUM | T1566 |
+
+### IdentityGuard Examples
+
+| Identity Pattern | Investigation Focus |
+|---|---|
+| MFA fatigue | Validate user intent and MFA approval context |
+| Impossible travel | Compare sign-in geography, timing, and business travel context |
+| New/unmanaged device login | Verify ownership and device compliance |
+| OAuth consent abuse | Review suspicious app consent and SaaS/mailbox access |
+| Mailbox forwarding | Review forwarding rules, inbox rules, and outbound email |
+| Password reset risk | Validate reset legitimacy and post-reset sessions |
+| Privileged/admin account risk | Review role changes, admin actions, and tenant impact |
+
+---
+
 ## Tech Stack
 
 **Core**
@@ -394,81 +508,73 @@ VT Reputation  : -75
 - CSV and JSON processing
 
 **AI**
-- Claude / Anthropic API
-- AI-assisted investigation summaries
-- AI-generated risk classification
-- AI-generated recommended actions
+- Claude / Anthropic API for optional AI-assisted triage and narrative summaries
+- Button-gated AI analyst summaries in IdentityGuard
+- Deterministic IdentityGuard scoring independent of AI output
 
 **Threat Intelligence**
-- VirusTotal API
+- VirusTotal API fields
 - Public IP geolocation enrichment
-- Hosting and proxy context detection
+- Hosting and proxy context
 
 **Security Concepts**
-- SOC triage workflows
+- SOC triage workflow design
 - MITRE ATT&CK mapping
 - Threat intelligence enrichment
-- Incident response decision support
-- False-positive review logic
+- Identity and access-abuse triage
+- False-positive review
+- Analyst handoff documentation
 
-**Integrations**
-- Slack webhooks
+**Integrations / Formats**
 - Splunk alert export CSV workflow
-
-**Data Formats**
+- Optional Slack webhook notifications
 - Raw `.txt` logs
 - JSON SIEM/UEBA alerts
-- Splunk export CSVs
-- `alerts_summary.csv` (triage output)
-- Exportable dashboard CSVs
-
-**Dev Tools**
-- Git / GitHub
-- VS Code
+- Structured identity CSV/JSON
 
 ---
 
 ## Why This Project Matters
 
-Most AI-security demos focus on detection. This project focuses on the analyst workflow that follows — the triage, enrichment, validation, and handoff steps that happen after an alert fires.
+Many AI-security demos focus on detection. This project focuses on the analyst workflow after an alert fires: triage, enrichment, validation, status management, and handoff.
 
-The design reflects practical realities of L1 SOC work:
+The design reflects practical realities of SOC work:
 
 - Alert volume is high and analyst time is limited
-- Not every alert warrants escalation — false-positive discipline matters
-- AI can assist with initial classification and summary generation, but human judgment drives the operational decision
-- Handoff quality directly affects how well an incident is handled downstream
+- False-positive discipline matters
+- Identity investigations require more than a single login signal
+- AI can assist with summarization and first-pass analysis, but human judgment drives operational decisions
+- Handoff quality affects downstream incident response
 
-The dashboard is built to support how analysts actually work: reviewing alerts in a queue, updating status as investigation progresses, generating handoff notes for tickets or shift changes, and exporting filtered results for reporting.
-
-This is not a research prototype or a marketing demo. It is a functional decision-support tool built around a realistic SOC workflow.
+For a portfolio, this project demonstrates more than a prompt wrapper. It shows workflow design, deterministic scoring, Streamlit dashboard development, enrichment logic, identity-risk modeling, file-based ingestion, exports, and practical analyst UX.
 
 ---
 
 ## Limitations
 
 - **Portfolio/lab project.** This is not a production SOC platform and has not been validated in an enterprise environment.
-- **AI output requires validation.** Every AI-generated summary, risk classification, and recommendation must be reviewed against raw logs and operational context before acting on it.
-- **Not a SIEM, SOAR, or EDR replacement.** The dashboard does not replace a SIEM, SOAR, EDR, ticketing platform, or incident response process.
-- **Single-file `.txt` upload.** Raw log upload performs one AI triage review per uploaded file. It is not designed to split a single large file into multiple alert rows.
-- **Splunk CSV upload is not live ingestion.** The Splunk upload feature is designed for exported alert CSV files. It does not connect to the Splunk API.
-- **Analyst status is not a case management database.** Status updates are stored in the generated dashboard CSV workflow, not a production database or ticketing system.
+- **Not a SIEM, SOAR, EDR, or ticketing replacement.** It does not replace existing detection, response, or case management systems.
+- **AI output requires validation.** AI-generated summaries and recommended actions must be reviewed against raw telemetry and business context.
+- **IdentityGuard scoring is deterministic but limited to modeled fields.** Better telemetry produces better triage context.
+- **IdentityGuard SOC pivot review is limited.** Uploading `alerts_summary.csv` to IdentityGuard detects identity-related rows but does not convert broad SOC alerts into full identity telemetry.
+- **Splunk CSV upload is not live ingestion.** The Splunk workflow is based on exported CSV files, not Splunk API polling.
+- **Status workflow is local.** Analyst status updates are file-based, not a production case-management database.
+- **Slack alerting is optional.** Webhook notifications require local configuration and should be treated as a demo integration.
 
 ---
 
 ## Future Enhancements
 
-- Deployment-ready Docker containerization
 - Live Splunk API integration
-- Real-time log streaming
-- SOAR-style response action simulation
+- SOAR-style response playbook simulation
+- Production-grade authentication and role separation
+- Database-backed case/status persistence
+- Expanded identity telemetry parsers
+- Additional enrichment providers
 - Detection engineering rule tuning workflow
-- Analyst notes field per incident
-- Exportable PDF handoff report
-- AbuseIPDB enrichment integration
-- Expanded threat intelligence sources
-- False-positive learning model
-- Authentication and user role separation
+- PDF report export
+- False-positive learning loop
+- Safer deployment packaging
 
 ---
 
@@ -477,4 +583,4 @@ This is not a research prototype or a marketing demo. It is a functional decisio
 **Angelo Pollari**  
 Cybersecurity | SOC Operations | AI + Security Automation
 
-[GitHub](https://github.com/angelopollari187-hub) · [LinkedIn](https://www.linkedin.com/in/angelojpollari/)
+[GitHub](https://github.com/angelopollari187-hub) | [LinkedIn](https://www.linkedin.com/in/angelojpollari/)
