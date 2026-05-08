@@ -81,7 +81,7 @@ The dashboard also includes a compact **Data Intake Guide** explaining when to u
 
 ## Demo Screenshots
 
-The screenshots below reflect the SOC dashboard workflow already included in this repository. IdentityGuard AI is implemented in the current dashboard code; updated IdentityGuard screenshots can be added later without renaming the existing files.
+The screenshots below reflect the SOC dashboard workflow already included in this repository. IdentityGuard AI is implemented in the current dashboard code.
 
 ### SOC Dashboard Overview
 
